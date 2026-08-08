@@ -93,3 +93,5 @@ The schema is inconsistent, not because it was never planned, but because a migr
 ## 5. Change log
 
 - **2026-08-08**: Document created. Raw requirements captured from CEO call transcript + same-day follow-up (registration/login/parent-dashboard deprioritized for now; focus is the adaptive intelligence layer, using a manually-seeded test profile instead of real registration). Current-system assessment completed (no profile exists, follow-up continuity is broken, Firestore schema has an incomplete migration). No design decisions made yet — next step is CEO-driven market/technical research on the open questions in §4.
+
+
