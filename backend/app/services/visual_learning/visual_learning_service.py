@@ -103,7 +103,44 @@ def clean_and_parse_json(response_text: str) -> dict:
     
     return json.loads(cleaned_text)
 
-async def generate_visual_lesson_stream(query: str, book_uuid: str, class_name: str, subject: str, precomputed_storyboard: dict = None):
+def _build_video_personalization_block(student_profile: dict = None) -> str:
+    """
+    SS6.4 gap fix: the video/storyboard pipeline previously received no
+    personalization signal at all (response_style/quadrant/escalation/
+    per-student history) - only the text QUICK_ANSWER path did. This gives
+    it the two highest-value signals (delivery style, and per-student
+    memory continuity - the actual bug this whole project started from)
+    without duplicating the full directive block from
+    master_orchestrator_prompt.txt.
+    """
+    if not student_profile:
+        return ""
+    lines = []
+    style = student_profile.get("response_style")
+    if style:
+        style_hint = {
+            "storytelling": "Frame the lesson's narration as a short story/analogy where possible.",
+            "direct": "Keep scene narration direct and to the point, minimal preamble.",
+            "detailed": "Break explanations into explicit, clearly sequenced steps.",
+        }.get(style, "")
+        if style_hint:
+            lines.append(f"- **Student's Preferred Style ({style})**: {style_hint}")
+    history = student_profile.get("per_student_history") or []
+    if history:
+        prior = "; ".join(
+            (h.get("reformulated_question") or h.get("question") or "")[:80] for h in history[:2]
+        )
+        lines.append(
+            f"- **This Student's Prior Related Learning**: They previously asked about: {prior}. "
+            f"If relevant, build on that instead of re-explaining it from scratch."
+        )
+    if not lines:
+        return ""
+    return "\n### PERSONALIZATION CONTEXT (personalized_learning.md SS6.4):\n" + "\n".join(lines) + "\n"
+
+
+async def generate_visual_lesson_stream(query: str, book_uuid: str, class_name: str, subject: str,
+                                         precomputed_storyboard: dict = None, student_profile: dict = None):
     """
     Main pipeline to generate a visual lesson storyboard.
     Streams progress states synchronized with frontend UI steps, compiles Hyperframes composition,
@@ -251,7 +288,8 @@ async def generate_visual_lesson_stream(query: str, book_uuid: str, class_name: 
             yield f"data: {json.dumps({'type': 'progress', 'step': 'designing_lesson', 'status': 'in_progress', 'message': 'Creating storyboard and scene animations...'})}\n\n"
             await asyncio.sleep(0.05)
 
-            prompt = get_visual_lesson_prompt(class_name, subject, query, context)
+            personalization_block = _build_video_personalization_block(student_profile)
+            prompt = get_visual_lesson_prompt(class_name, subject, query, context, personalization_block)
             client = qdrant.openai_client
 
             if not client:

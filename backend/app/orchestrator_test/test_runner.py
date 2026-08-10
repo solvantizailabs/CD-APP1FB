@@ -284,6 +284,61 @@ def normalize_subject_name(raw: str) -> str:
     return s.lower()
 
 
+def restyle_text_narration(text: str, style: str, client, model: str) -> Optional[str]:
+    """
+    Focused, single-purpose restyle pass (see call site in
+    run_orchestrator_pipeline for why this exists as a separate call rather
+    than folding style into the main orchestrator prompt). Only rewrites
+    PRESENTATION - must not add, remove, or change any fact/number/formula.
+    Returns None (caller keeps the original) on any failure - this is a
+    quality enhancement, never allowed to block or corrupt an answer.
+    """
+    if style == "storytelling":
+        instruction = (
+            "Rewrite this into a STORYTELLING style: open with ONE concrete narrative or "
+            "analogy sentence that frames the concept (e.g. a relatable everyday scenario), "
+            "then weave the existing facts into flowing prose around that analogy. "
+            "Do not use bullet points. Do not lose or alter any fact, number, or formula."
+        )
+    elif style == "detailed":
+        instruction = (
+            "Rewrite this into a DETAILED style: explicit numbered steps (1. 2. 3. ...), "
+            "each step a complete sentence. Do not use unordered bullets or a single paragraph. "
+            "Do not lose or alter any fact, number, or formula."
+        )
+    else:
+        return None
+
+    prompt = f"{instruction}\n\nOriginal text:\n{text}\n\nRewritten text (same facts, new style, no preamble/commentary, just the rewritten text itself):"
+
+    try:
+        response = client.models.generate_content(model=model, contents=[prompt], config={"temperature": 0.4})
+        rewritten = (response.text or "").strip()
+        return rewritten if rewritten else None
+    except Exception as e:
+        print(f"[RESTYLE] LLM call failed: {e}")
+        return None
+
+
+def detect_inline_style_override(query: str) -> Optional[str]:
+    """
+    SS2.2's "a stated preference is a default, not a lock" requirement,
+    applied to the restyle pass (see restyle_text_narration) - the main
+    orchestrator prompt's own OVERRIDE RULE directive was confirmed
+    unreliable for the same reason the base style directive was (too many
+    competing instructions in one call), so inline intent needs to be
+    detected here too, not just described in the prompt.
+    """
+    q = (query or "").lower()
+    if any(p in q for p in ("step by step", "step-by-step", "in detail", "in-depth", "detailed")):
+        return "detailed"
+    if any(p in q for p in ("story", "analogy", "storytelling", "like a story")):
+        return "storytelling"
+    if any(p in q for p in ("quick answer", "quickly", "brief", "short answer", "just the answer", "direct answer")):
+        return "direct"
+    return None
+
+
 def run_orchestrator_pipeline(raw_query: str, student_profile: Dict[str, Any]) -> Dict[str, Any]:
     """
     Executes the single-pass Orchestrator LLM, runs RAG search if CURRICULUM,
@@ -328,6 +383,45 @@ def run_orchestrator_pipeline(raw_query: str, student_profile: Dict[str, Any]) -
     formatted_prompt = formatted_prompt.replace("{current_date_time}", current_date_time)
     formatted_prompt = formatted_prompt.replace("{cached_subjects_and_chapter_summaries}", curriculum_cache_text)
     formatted_prompt = formatted_prompt.replace("{retrieved_top10_chunks}", "[RAG Chunks will be provided if CURRICULUM]")
+
+    # Personalization context (personalized_learning.md SS6.1-SS6.4). All
+    # optional - a student with no profile/history yet gets honest
+    # "not set"/"none" placeholders rather than a broken template string.
+    response_style = student_profile.get("response_style") or "not set"
+    quadrant = student_profile.get("quadrant") or "not set"
+    escalation_level = student_profile.get("escalation_level", 0) or 0
+    if escalation_level >= 2:
+        escalation_instruction = f"student has repeated a similar basic question {escalation_level} times on this topic - escalate strongly (favor a diagram/visual framing)"
+    elif escalation_level == 1:
+        escalation_instruction = "student repeated a similar basic question once on this topic - escalate to a concrete example/analogy"
+    else:
+        escalation_instruction = "none"
+
+    per_student_history = student_profile.get("per_student_history") or []
+    if per_student_history:
+        history_lines = []
+        for h in per_student_history[:3]:
+            q = h.get("reformulated_question") or h.get("question") or ""
+            summary = (h.get("answer_summary") or "")[:200]
+            history_lines.append(f"- Previously asked: \"{q}\" -> covered: {summary}")
+        per_student_memory_context = "\n".join(history_lines)
+    else:
+        per_student_memory_context = "none - this is either the student's first question on this topic, or no related prior history was found"
+
+    tough_subjects = student_profile.get("tough_subjects") or []
+    easy_subjects = student_profile.get("easy_subjects") or []
+    subject_notes = []
+    if tough_subjects:
+        subject_notes.append(f"finds these subjects tough: {', '.join(tough_subjects)}")
+    if easy_subjects:
+        subject_notes.append(f"finds these subjects easy: {', '.join(easy_subjects)}")
+    tough_easy_subjects_note = "; ".join(subject_notes) if subject_notes else "not set"
+
+    formatted_prompt = formatted_prompt.replace("{student_response_style}", response_style)
+    formatted_prompt = formatted_prompt.replace("{student_quadrant}", quadrant)
+    formatted_prompt = formatted_prompt.replace("{escalation_instruction}", escalation_instruction)
+    formatted_prompt = formatted_prompt.replace("{per_student_memory_context}", per_student_memory_context)
+    formatted_prompt = formatted_prompt.replace("{tough_easy_subjects_note}", tough_easy_subjects_note)
 
     # Step 3: Run Orchestrator LLM (Single Pass)
     print(f"\n[ORCHESTRATOR LLM] Executing single-pass evaluation for Class {grade} query...")
@@ -609,6 +703,37 @@ def run_orchestrator_pipeline(raw_query: str, student_profile: Dict[str, Any]) -
             # Do not write a fabricated chunk when retrieval fails; the audit
             # report must reflect the actual Qdrant result.
             rag_chunks = []
+
+    # Restyle pass (personalized_learning.md - real bug found via live log
+    # analysis against class10_personalization_test_guide.md): asking the
+    # single main orchestrator call to simultaneously handle safety,
+    # classification, RAG grounding, JSON-schema output, AND a storytelling/
+    # detailed style directive was CONFIRMED not to work reliably in
+    # practice - two rounds of strengthening the wording in
+    # master_orchestrator_prompt.txt made no measurable difference (still
+    # plain bulleted facts, zero analogy, for a "storytelling" preference).
+    # Root cause: too many competing instructions in one call for a small
+    # model to reliably prioritize a stylistic one over factual/grounding
+    # ones. Fix: a second, narrowly-scoped LLM call whose ONLY job is to
+    # restyle already-correct text - nothing else competing for its
+    # attention - so it's a much easier instruction-following task.
+    # Inline query intent (SS2.2) wins over the stored preference - e.g. a
+    # "direct" student who explicitly asks for "detailed step-by-step points"
+    # gets detailed for this turn only.
+    _response_style_for_restyle = detect_inline_style_override(raw_query) or (student_profile or {}).get("response_style")
+    if (
+        format_decision == "QUICK_ANSWER"
+        and orchestrator_output.get("text_narration")
+        and _response_style_for_restyle in ("storytelling", "detailed")
+    ):
+        try:
+            restyled = restyle_text_narration(
+                orchestrator_output["text_narration"], _response_style_for_restyle, openai_client, MODEL
+            )
+            if restyled:
+                orchestrator_output["text_narration"] = restyled
+        except Exception as restyle_err:
+            print(f"[RESTYLE] Failed, keeping original text_narration: {restyle_err}")
 
     execution_time = round(time.time() - start_time, 2)
 

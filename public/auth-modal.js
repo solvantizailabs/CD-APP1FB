@@ -4,6 +4,7 @@
  */
 
 let selectedClassNum = null;
+let selectedResponseStyle = null;
 let pendingRedirect = null;
 
 // Show student login modal
@@ -114,6 +115,17 @@ function showClassSelectionModal() {
             });
         }, 100);
     }
+
+    // Pre-select response style if already set (personalized_learning.md SS6.1)
+    const existingStyle = userData && userData.preferences && userData.preferences.response_style;
+    if (existingStyle) {
+        selectedResponseStyle = existingStyle;
+        setTimeout(() => {
+            const styleBtn = document.querySelector(`.class-btn[data-style="${existingStyle}"]`);
+            if (styleBtn) styleBtn.classList.add('selected');
+            updateSaveButton();
+        }, 100);
+    }
 }
 
 // Close class selection modal
@@ -177,13 +189,30 @@ function selectClass(classNum) {
     updateSaveButton();
 }
 
+// Select a response-style preference (personalized_learning.md SS6.1)
+function selectResponseStyle(style) {
+    selectedResponseStyle = style;
+
+    document.querySelectorAll('#style-buttons .class-btn').forEach(btn => {
+        btn.classList.remove('selected');
+    });
+    const selected = document.querySelector(`.class-btn[data-style="${style}"]`);
+    if (selected) selected.classList.add('selected');
+
+    const styleError = document.getElementById('style-error');
+    if (styleError) styleError.style.display = 'none';
+
+    updateSaveButton();
+}
+
 function updateSaveButton() {
     const saveBtn = document.getElementById('save-class-btn');
     const userData = authManager.userData;
     const hasExistingClass = userData && userData.class;
+    const hasExistingStyle = userData && userData.preferences && userData.preferences.response_style;
 
     if (saveBtn) {
-        if (selectedAvatarId && (selectedClassNum || hasExistingClass)) {
+        if (selectedAvatarId && (selectedClassNum || hasExistingClass) && (selectedResponseStyle || hasExistingStyle)) {
             saveBtn.disabled = false;
         } else {
             saveBtn.disabled = true;
@@ -229,21 +258,37 @@ async function saveClassAndAvatar() {
         return;
     }
 
+    // Validate response-style preference (personalized_learning.md SS6.1)
+    const hasExistingStyle = userData && userData.preferences && userData.preferences.response_style;
+    if (!selectedResponseStyle && !hasExistingStyle) {
+        const styleError = document.getElementById('style-error');
+        if (styleError) styleError.style.display = 'block';
+        return;
+    }
+    const finalResponseStyle = selectedResponseStyle || (userData.preferences && userData.preferences.response_style);
+
     // Use existing class or newly selected class
     const finalClass = selectedClassNum || userData.class;
 
     // Find avatar details
     const selectedAvatar = STUDENT_AVATARS.find(a => a.id === selectedAvatarId);
 
-    console.log('[AUTH] Saving profile - Name:', displayName, 'Class:', finalClass, 'Avatar:', selectedAvatar.name);
+    console.log('[AUTH] Saving profile - Name:', displayName, 'Class:', finalClass, 'Avatar:', selectedAvatar.name, 'Style:', finalResponseStyle);
 
-    // Update user profile in Firestore
+    // Update user profile in Firestore. `preferences` matches the shape
+    // backend/app/services/personalization/profile_service.py reads via
+    // get_profile_context() - no separate backend endpoint needed, this is
+    // the same direct-client-write pattern class/avatar already use.
     const result = await authManager.updateUserProfile({
         name: displayName,
         class: finalClass,
         avatar: selectedAvatar.emoji,
         avatarId: selectedAvatar.id,
-        avatarName: selectedAvatar.name
+        avatarName: selectedAvatar.name,
+        preferences: {
+            ...(userData.preferences || {}),
+            response_style: finalResponseStyle
+        }
     });
 
     if (result.success) {

@@ -643,6 +643,221 @@ def embed_query(query: str):
     return local_embedder.encode(query).tolist()
 
 
+# ============================================================================
+# Per-student episodic memory (personalized_learning.md SS6.4) and the
+# semantic global-cache index (SS6.7). Both are separate Qdrant collections
+# from COLLECTION_NAME ("textbooks_v2", the shared textbook content) and from
+# each other - the per-student collection is scoped to one uid via a payload
+# filter, the global-cache index has no uid at all, matching SS6.5's rule
+# that these two layers must never be merged.
+# ============================================================================
+STUDENT_HISTORY_COLLECTION = os.environ.get("STUDENT_HISTORY_COLLECTION_NAME", "student_history")
+GLOBAL_CACHE_INDEX_COLLECTION = os.environ.get("GLOBAL_CACHE_INDEX_COLLECTION_NAME", "global_answer_cache_index")
+
+# Cosine-similarity thresholds. Deliberately different: a per-student memory
+# miss just means "answer fresh" (low cost), but a global-cache false
+# positive means REPLAYING A POSSIBLY WRONG CACHED ANSWER to a student whose
+# question only superficially resembles the cached one (high cost) - so the
+# cache-reuse bar is set much stricter than the memory-retrieval bar.
+# Calibrated 2026-08-08 against real text-embedding-3-small scores on a live
+# digestive/circulatory-system example: genuinely related-but-differently-
+# worded questions scored 0.40-0.49, an unrelated control topic scored
+# 0.10-0.13 - 0.30 sits with margin on both sides of that real gap.
+STUDENT_HISTORY_MIN_SCORE = 0.30
+# Calibrated 2026-08-08: a real paraphrase ("explain photosynthesis" vs "how
+# does photosynthesis work") scored 0.68-0.73; an unrelated topic scored
+# 0.23. 0.62 sits just under the real paraphrase range with margin above the
+# unrelated score - deliberately still the stricter of the two thresholds
+# (see the module docstring above for why).
+GLOBAL_CACHE_MIN_SCORE = 0.62
+
+
+def _ensure_collection(name: str):
+    """Create a Qdrant collection sized to the active embedder if it doesn't exist yet."""
+    if client is None or local_embedder is None:
+        return
+    try:
+        if not client.collection_exists(collection_name=name):
+            dim = local_embedder.get_sentence_embedding_dimension()
+            client.create_collection(
+                collection_name=name,
+                vectors_config=models.VectorParams(size=dim, distance=models.Distance.COSINE),
+            )
+            for field in ["uid", "class_name", "subject"]:
+                try:
+                    client.create_payload_index(
+                        collection_name=name, field_name=field,
+                        field_schema=models.PayloadSchemaType.KEYWORD,
+                    )
+                except Exception:
+                    pass
+            print(f"[Qdrant] Collection '{name}' created successfully.")
+    except Exception as e:
+        print(f"[Qdrant] Warning: could not ensure collection '{name}': {e}")
+
+
+def _encode(text: str):
+    vector = local_embedder.encode(text)
+    return vector.tolist() if hasattr(vector, "tolist") else list(vector)
+
+
+def text_similarity(text_a: str, text_b: str) -> float:
+    """
+    Cosine similarity between two raw strings, computed in-memory (no Qdrant
+    round-trip) - used by the repeat-question escalation topic check (SS6.3)
+    to tell "same topic, asked again" apart from "coincidentally also a
+    basic-phrased question, but a different topic entirely."
+    """
+    if not text_a or not text_b or local_embedder is None:
+        return 0.0
+    try:
+        va = np.array(_encode(text_a), dtype=np.float32)
+        vb = np.array(_encode(text_b), dtype=np.float32)
+        denom = float(np.linalg.norm(va) * np.linalg.norm(vb))
+        if denom == 0.0:
+            return 0.0
+        return float(np.dot(va, vb) / denom)
+    except Exception as e:
+        print(f"[TextSimilarity] Failed to compute similarity: {e}")
+        return 0.0
+
+
+def store_student_turn(uid: str, question: str, reformulated_question: str,
+                        answer_summary: str, class_name, subject: str,
+                        topic: str = None) -> None:
+    """
+    Persist one student's Q&A turn as a searchable memory point (SS6.4).
+    Called once per answered turn, alongside (not instead of) the global
+    cache write - see chat.py.
+    """
+    if client is None or local_embedder is None or not uid or uid == "anonymous":
+        return
+    try:
+        _ensure_collection(STUDENT_HISTORY_COLLECTION)
+        embed_text = f"{reformulated_question or question}\n{(answer_summary or '')[:500]}"
+        vector = _encode(embed_text)
+        point_id = str(uuid.uuid4())
+        client.upsert(
+            collection_name=STUDENT_HISTORY_COLLECTION,
+            points=[models.PointStruct(
+                id=point_id,
+                vector=vector,
+                payload={
+                    "uid": uid,
+                    "question": question,
+                    "reformulated_question": reformulated_question,
+                    "answer_summary": (answer_summary or "")[:1500],
+                    "class_name": str(class_name),
+                    "subject": str(subject or "").lower(),
+                    "topic": topic or "",
+                    "timestamp": datetime.datetime.utcnow().isoformat(),
+                },
+            )],
+        )
+    except Exception as e:
+        print(f"[StudentHistory] Failed to store turn for uid={uid}: {e}")
+
+
+def retrieve_student_history(uid: str, query: str, limit: int = 3) -> List[Dict]:
+    """
+    Semantic lookup of this student's OWN past turns related to `query`
+    (SS6.4) - the direct fix for the "blunder answer on follow-up" bug
+    (personalized_learning.md SS2.4). Empty list on a genuinely new topic,
+    on the student's first-ever question, or on any retrieval error.
+    """
+    if client is None or local_embedder is None or not uid or uid == "anonymous":
+        return []
+    try:
+        _ensure_collection(STUDENT_HISTORY_COLLECTION)
+        vector = _encode(query)
+        results = client.search(
+            collection_name=STUDENT_HISTORY_COLLECTION,
+            query_vector=vector,
+            query_filter=models.Filter(
+                must=[models.FieldCondition(key="uid", match=models.MatchValue(value=uid))]
+            ),
+            limit=limit,
+        )
+        hits = [r for r in results if r.score >= STUDENT_HISTORY_MIN_SCORE]
+        return [
+            {
+                "question": h.payload.get("question"),
+                "reformulated_question": h.payload.get("reformulated_question"),
+                "answer_summary": h.payload.get("answer_summary"),
+                "topic": h.payload.get("topic"),
+                "score": h.score,
+                "timestamp": h.payload.get("timestamp"),
+            }
+            for h in hits
+        ]
+    except Exception as e:
+        print(f"[StudentHistory] Failed to retrieve history for uid={uid}: {e}")
+        return []
+
+
+def index_global_cache_entry(doc_id: str, raw_query: str, class_name: str, subject: str) -> None:
+    """
+    SS6.7: index a freshly-cached answer's question text semantically, so a
+    later, differently-worded-but-same-intent question can still find it.
+    The Firestore doc (written by save_to_global_query_cache) stays the
+    source of truth for the answer payload - this collection only stores
+    enough to find that doc's ID again.
+    """
+    if client is None or local_embedder is None or not raw_query:
+        return
+    try:
+        _ensure_collection(GLOBAL_CACHE_INDEX_COLLECTION)
+        vector = _encode(raw_query)
+        point_id = str(uuid.uuid4())
+        client.upsert(
+            collection_name=GLOBAL_CACHE_INDEX_COLLECTION,
+            points=[models.PointStruct(
+                id=point_id,
+                vector=vector,
+                payload={
+                    "doc_id": doc_id,
+                    "raw_query": raw_query,
+                    "class_name": str(class_name),
+                    "subject": str(subject or "").lower(),
+                    "timestamp": datetime.datetime.utcnow().isoformat(),
+                },
+            )],
+        )
+    except Exception as e:
+        print(f"[GlobalCacheIndex] Failed to index doc_id={doc_id}: {e}")
+
+
+def find_semantic_cache_match(query: str, class_name: str, subject: str) -> Optional[str]:
+    """
+    SS6.7: given a query that missed the exact-text cache check, look for a
+    semantically-equivalent cached question and return its Firestore doc_id
+    (or None). Uses a deliberately high similarity bar (GLOBAL_CACHE_MIN_SCORE)
+    since a false positive here means replaying a possibly-wrong cached
+    answer to an unrelated question.
+    """
+    if client is None or local_embedder is None or not query:
+        return None
+    try:
+        _ensure_collection(GLOBAL_CACHE_INDEX_COLLECTION)
+        vector = _encode(query)
+        must = [models.FieldCondition(key="class_name", match=models.MatchValue(value=str(class_name)))]
+        subj_str = str(subject or "").strip().lower()
+        if subj_str and subj_str not in ["all", "none", "choose your subject..."]:
+            must.append(models.FieldCondition(key="subject", match=models.MatchValue(value=subj_str)))
+        results = client.search(
+            collection_name=GLOBAL_CACHE_INDEX_COLLECTION,
+            query_vector=vector,
+            query_filter=models.Filter(must=must),
+            limit=1,
+        )
+        if results and results[0].score >= GLOBAL_CACHE_MIN_SCORE:
+            return results[0].payload.get("doc_id")
+        return None
+    except Exception as e:
+        print(f"[GlobalCacheIndex] Semantic lookup failed: {e}")
+        return None
+
+
 def clear_qdrant_collection():
     """
     Deletes and re-creates the Qdrant collection, effectively clearing all data.

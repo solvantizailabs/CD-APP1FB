@@ -25,12 +25,17 @@ from backend.app.core.auth_middleware import get_user_id_or_default
 from backend.app.core.firebase.firebase_init import db
 from backend.app.core import firestore_service
 from backend.app.core.firestore_service import check_global_query_cache, save_to_global_query_cache
+from backend.app.services.personalization import profile_service
 from backend.app.orchestrator_test.test_runner import run_orchestrator_pipeline
 from backend.app.services.deployment_logger import save_chat_log_background
 
-def format_text_explanation(text: str) -> str:
+def format_text_explanation(text) -> str:
     if not text:
-        return text
+        return ""
+    if isinstance(text, list):
+        text = "\n\n".join(str(item) for item in text)
+    else:
+        text = str(text)
     
     import re
     # 1. Add space after punctuation if followed directly by any letter (English or Devanagari)
@@ -446,7 +451,20 @@ async def smart_query_engine(
         try:
             # 1. Load summary list for grade mapping
             session = session_manager.get_or_create_session(book_uuid, session_id)
-            
+
+            # CRITICAL FIX (found via real-world log analysis, class10_personalization_test_guide.md):
+            # the frontend (public/script.js line ~854) has ALWAYS expected a
+            # {'type': 'session', 'session_id': ...} event to persist the
+            # session across turns, but this endpoint never sent one - so
+            # session_id was always null on every request, and
+            # get_or_create_session(book_uuid, None) created a BRAND NEW
+            # Redis session on every single turn. This silently broke every
+            # session-scoped mechanism (repeat-question escalation SS6.3
+            # above all - confirmed via real logs showing escalation_level
+            # stuck at 0 across 4 turns that should have escalated 0->1->2->0)
+            # for the entire life of the app, not just this project's work.
+            yield f"data: {json.dumps({'type': 'session', 'session_id': session['session_id']})}\n\n"
+
             # Extract requested class number from query params as fallback.
             # Use request.query_params directly (more robust across invocation styles).
             fallback_class = 0
@@ -509,8 +527,48 @@ async def smart_query_engine(
                     "role": "student"
                 }
 
+            # 1b. Personalization context (personalized_learning.md SS6.1-SS6.4):
+            # profile preferences/quadrant, this-session repeat-question
+            # escalation, and this student's OWN semantically-related prior
+            # turns. All best-effort and independent of the global cache below
+            # (SS6.5 - the two layers are never merged).
+            profile_ctx = profile_service.get_profile_context(uid)
+            escalation_level = session_manager.get_escalation_level(session["session_id"])
+            student_history_hits = qdrant.retrieve_student_history(uid, query)
+            student_profile["response_style"] = profile_ctx.get("response_style")
+            student_profile["quadrant"] = profile_ctx.get("quadrant")
+            student_profile["escalation_level"] = escalation_level
+            student_profile["per_student_history"] = student_history_hits
+            # SS2.1: self-reported tough/easy subjects - previously collected
+            # by profile_service.set_preferences() but never actually merged
+            # into student_profile or read by the prompt. Gap fix.
+            student_profile["tough_subjects"] = profile_ctx.get("tough_subjects", [])
+            student_profile["easy_subjects"] = profile_ctx.get("easy_subjects", [])
+
+            # SS6.3 fix: a basic-phrased question only continues the repeat
+            # streak if it's actually ABOUT the same topic as the question
+            # that started the streak - not just "also short/simple". Compare
+            # via embedding similarity against the same 0.30 bar used for
+            # per-student memory (qdrant.STUDENT_HISTORY_MIN_SCORE), rather
+            # than assuming any two basic-phrased questions in a row are
+            # related just because neither one triggered a topic change.
+            streak_anchor = session_manager.get_streak_anchor(session["session_id"])
+            is_same_topic_as_streak = True
+            if streak_anchor:
+                is_same_topic_as_streak = qdrant.text_similarity(query, streak_anchor) >= qdrant.STUDENT_HISTORY_MIN_SCORE
+
             # 2. Check global cache hit
             cached = check_global_query_cache(query, student_profile["class"], subject)
+
+            # Decision-trace log line (personalized_learning.md's "how do I
+            # check the logs" ask) - one line per turn showing exactly what
+            # personalization state was read and applied.
+            print(
+                f"[PERSONALIZATION TRACE] uid={uid} preference={profile_ctx.get('response_style')} "
+                f"quadrant={profile_ctx.get('quadrant')} escalation_level={escalation_level} "
+                f"per_student_hits={len(student_history_hits)} global_cache_hit={'YES' if cached else 'NO'}"
+            )
+
             if cached:
                 out = cached["orchestrator_output"]
                 interactive_url = cached.get("interactive_url")
@@ -610,6 +668,56 @@ async def smart_query_engine(
                 except Exception as log_err:
                     logger.error(f"[ANALYTICS] Failed to log query to user_queries on cache hit: {log_err}")
 
+                # SS6.2-SS6.4: even on a cache hit, this student did just
+                # receive this answer - record it into their own memory and
+                # profile signals so a later follow-up still builds on it,
+                # and so repeat-question escalation still tracks correctly.
+                try:
+                    is_basic = profile_service.is_basic_question(query)
+                    session_manager.add_turn(session["session_id"], {
+                        "query": query,
+                        "reformulated": out.get("reformulated_query", query),
+                        "answer": text_script,
+                        "intent_type": "USE_CACHED_CONTEXT",
+                        "is_basic_question": is_basic,
+                        "is_same_topic_as_streak": is_same_topic_as_streak,
+                        "timestamp": datetime.datetime.now().isoformat()
+                    })
+                    profile_service.record_turn_signals(
+                        uid, student_profile["class"], query,
+                        grade_relative_difficulty=out.get("grade_relative_difficulty")
+                    )
+                    profile_service.compute_quadrant(uid)
+                    qdrant.store_student_turn(
+                        uid, query, out.get("reformulated_query", query), text_script,
+                        student_profile["class"], matched_subject or subject, topic=matched_chapter
+                    )
+                except Exception as personalization_err:
+                    logger.error(f"[PERSONALIZATION] Failed to update per-student state on cache hit: {personalization_err}")
+
+                # SS7's "where do I see the logs" answer: a durable, consolidated
+                # JSONL record of this turn (previously this function was only
+                # ever called from the older /api/query endpoint, so the log
+                # directory went stale - now also written from the live path).
+                save_chat_log_background(
+                    user_query=query,
+                    subject=matched_subject or subject,
+                    mode="smart_query_cache_hit",
+                    session_id=session["session_id"],
+                    llm_response=text_script,
+                    execution_time_ms=int((time.time() - start_time) * 1000),
+                    uid=uid,
+                    personalization={
+                        "preference": profile_ctx.get("response_style"),
+                        "quadrant": profile_ctx.get("quadrant"),
+                        "escalation_level": escalation_level,
+                        "per_student_hits": len(student_history_hits),
+                        "global_cache_hit": True,
+                        "classification": classification,
+                        "format_decision": format_decision,
+                    }
+                )
+
                 # Yield the Firestore document ID so the frontend can attach feedback to this query
                 if _query_doc_id:
                     yield f"data: {json.dumps({'type': 'query_id', 'query_id': _query_doc_id})}\n\n"
@@ -689,7 +797,8 @@ async def smart_query_engine(
                     query=query,
                     book_uuid=video_book_uuid,
                     class_name=str(student_profile["class"]),
-                    subject=video_subject
+                    subject=video_subject,
+                    student_profile=student_profile
                 )
 
                 streamed_scene_nos = set()
@@ -877,9 +986,50 @@ async def smart_query_engine(
                 "answer": text_script,
                 "intent_type": classification,
                 "is_clicked_followup": is_clicked_followup,
+                "is_basic_question": profile_service.is_basic_question(query),
+                "is_same_topic_as_streak": is_same_topic_as_streak,
                 "timestamp": datetime.datetime.now().isoformat()
             }
             session_manager.add_turn(session["session_id"], turn_data)
+
+            # SS6.2/SS6.4: update this student's running skill/engagement
+            # signals and quadrant, and store this turn as retrievable
+            # per-student memory for future follow-ups. Best-effort - must
+            # never fail the response itself.
+            try:
+                profile_service.record_turn_signals(
+                    uid, student_profile["class"], query,
+                    grade_relative_difficulty=out.get("grade_relative_difficulty")
+                )
+                profile_service.compute_quadrant(uid)
+                qdrant.store_student_turn(
+                    uid, query, out.get("reformulated_query", query), text_script,
+                    student_profile["class"], matched_subject or subject, topic=matched_chapter
+                )
+            except Exception as personalization_err:
+                logger.error(f"[PERSONALIZATION] Failed to update per-student state: {personalization_err}")
+
+            # SS7's "where do I see the logs" answer - see the matching call
+            # on the cache-hit path above for why this exists.
+            save_chat_log_background(
+                user_query=query,
+                subject=matched_subject or subject,
+                mode="smart_query_fresh",
+                session_id=session["session_id"],
+                llm_response=text_script,
+                execution_time_ms=int((time.time() - start_time) * 1000),
+                uid=uid,
+                personalization={
+                    "preference": profile_ctx.get("response_style"),
+                    "quadrant": profile_ctx.get("quadrant"),
+                    "escalation_level": escalation_level,
+                    "per_student_hits": len(student_history_hits),
+                    "global_cache_hit": False,
+                    "grade_relative_difficulty": out.get("grade_relative_difficulty"),
+                    "classification": classification,
+                    "format_decision": format_decision,
+                }
+            )
 
             # Log query to Firestore user_queries collection
             _query_doc_id = None
@@ -1098,6 +1248,18 @@ async def submit_feedback(request: FeedbackRequest):
             }
         })
         logger.info(f"[FEEDBACK] Saved '{request.feedback_type}' for query {request.query_id} at {doc_ref.path}")
+
+        # SS2.1 lists feedback as an engagement signal for the skill x
+        # engagement quadrant - previously recorded to Firestore but never
+        # read back into personalization. doc path is users/{uid}/queries/{id},
+        # so the uid is the queries collection's parent document.
+        try:
+            feedback_uid = doc_ref.parent.parent.id
+            profile_service.record_feedback_signal(feedback_uid, is_positive=(request.feedback_type == "like"))
+            profile_service.compute_quadrant(feedback_uid)
+        except Exception as fb_signal_err:
+            logger.error(f"[FEEDBACK] Failed to update personalization signals: {fb_signal_err}")
+
         return {"status": "ok"}
     except HTTPException:
         raise

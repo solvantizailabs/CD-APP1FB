@@ -29,11 +29,23 @@ def save_chat_log_background(
     retrieved_rag_chunks: Optional[List[Dict[str, Any]]] = None,
     llm_response: Optional[str] = None,
     tts_audio_url: Optional[str] = None,
-    execution_time_ms: int = 0
+    execution_time_ms: int = 0,
+    uid: Optional[str] = None,
+    personalization: Optional[Dict[str, Any]] = None
 ) -> None:
     """
     Asynchronously write daily append-only JSONL log of chat interactions
     without blocking user request flow.
+
+    `personalization` (personalized_learning.md SS7) is the same
+    per-turn decision-trace data that otherwise only prints to server
+    stdout as `[PERSONALIZATION TRACE]` - e.g.
+    {preference, quadrant, escalation_level, per_student_hits,
+    global_cache_hit, grade_relative_difficulty}. Previously this function
+    was only called from the older /api/query endpoint, not the live
+    /api/smart_query path everything in this project runs through - the
+    consolidated log directory went stale as a result. Now also called from
+    /api/smart_query (chat.py) with this field populated.
     """
     try:
         chat_dir = get_chat_log_dir()
@@ -43,13 +55,15 @@ def save_chat_log_background(
         log_payload = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "session_id": session_id or "default_session",
+            "uid": uid or "anonymous",
             "mode": mode,
             "user_query": user_query,
             "subject": subject,
             "retrieved_rag_chunks": retrieved_rag_chunks or [],
             "llm_response": llm_response or "",
             "tts_audio_url": tts_audio_url or "",
-            "execution_time_ms": execution_time_ms
+            "execution_time_ms": execution_time_ms,
+            "personalization": personalization or {}
         }
 
         with open(log_file, "a", encoding="utf-8") as f:

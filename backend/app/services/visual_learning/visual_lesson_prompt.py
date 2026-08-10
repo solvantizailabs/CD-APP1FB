@@ -7,7 +7,8 @@ from backend.app.services.visual_learning.template_registry import (
     build_shape_guidance_text,
 )
 
-def get_visual_lesson_prompt(class_name: str, subject: str, query: str, context: str) -> str:
+def get_visual_lesson_prompt(class_name: str, subject: str, query: str, context: str,
+                              personalization_context: str = "") -> str:
     class_num = parse_class_num(class_name)
     style = get_style_config(class_num)
     template_choice_line = build_template_choice_line()
@@ -25,7 +26,7 @@ Base your explanation on the textbook context below.
 - **Sentence Structure**: Keep sentences {style['sentence_length']}. Avoid complex academic terms or jargon. Break down explanations into simple, everyday terms.
 - **Analogy Guideline**: {style['analogy_guideline']}
 - **Vocal Tone**: {style['tone']}
-
+{personalization_context}
 Student Query: "{query}"
 
 Textbook Context:

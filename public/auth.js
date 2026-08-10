@@ -195,10 +195,12 @@ class AuthManager {
         }
     }
 
-    // Check if user needs to complete profile (class or avatar missing)
+    // Check if user needs to complete profile (class, avatar, or response
+    // style preference missing - personalized_learning.md SS6.1)
     needsProfileSetup() {
         if (!this.userData || this.userData.role !== 'student') return false;
-        return !this.userData.class || !this.userData.avatar;
+        const hasStyle = this.userData.preferences && this.userData.preferences.response_style;
+        return !this.userData.class || !this.userData.avatar || !hasStyle;
     }
 
     // Legacy method - kept for compatibility

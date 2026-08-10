@@ -94,6 +94,13 @@ def check_global_query_cache(raw_query: str, class_name: str, subject: str = Non
     """
     Checks Firestore nested 'query_cache' for a matching query record.
     Returns the cached data if found and valid on disk, else None.
+
+    Two-stage lookup (personalized_learning.md SS6.7): an exact/near-exact
+    normalized-text match first (fast, cheap, unchanged from the original
+    implementation), then - only on a miss - a semantic fallback via a
+    dedicated Qdrant index, so differently-worded questions with the same
+    intent ("explain photosynthesis" vs "how does photosynthesis work")
+    still hit the cache instead of silently missing it.
     """
     import os
     normalized = normalize_query_string(raw_query)
@@ -118,14 +125,51 @@ def check_global_query_cache(raw_query: str, class_name: str, subject: str = Non
             query_ref = db.collection_group("query_cache")\
                           .where("normalized_query", "==", normalized)\
                           .where("class", "==", class_str)
-            
-        docs = query_ref.limit(1).get()
-        
-        if not docs:
-            logger.info("[CACHE] Global cache miss (no document found)")
-            return None
 
-        cached_data = docs[0].to_dict()
+        docs = query_ref.limit(1).get()
+
+        cache_doc = docs[0] if docs else None
+
+        if cache_doc is None:
+            # Exact-text miss - try the semantic fallback (SS6.7) before
+            # giving up entirely.
+            logger.info("[CACHE] Exact-text miss, trying semantic cache lookup...")
+            try:
+                from backend.app.services.retrieval import qdrant_service
+                doc_id = qdrant_service.find_semantic_cache_match(raw_query, class_str, subj_str)
+            except Exception as sem_err:
+                logger.warning(f"[CACHE] Semantic cache lookup failed, treating as miss: {sem_err}")
+                doc_id = None
+
+            if not doc_id:
+                logger.info("[CACHE] Global cache miss (no exact or semantic match)")
+                return None
+
+            # Re-derive the resolved subject the entry was actually filed
+            # under, since a semantic match can come from the collection-group
+            # fallback path where subj_str was "all"/empty.
+            found_subj = subj_str if subj_str and subj_str not in ["all", "none", "choose your subject..."] else None
+            if found_subj:
+                doc_ref = db.collection("classes").document(clean_class)\
+                             .collection("subjects").document(found_subj)\
+                             .collection("query_cache").document(doc_id)
+                cache_doc = doc_ref.get()
+                if not cache_doc.exists:
+                    cache_doc = None
+            if cache_doc is None:
+                # Subject unknown, or doc wasn't under that subject - scan this
+                # class's cache entries for the matching doc_id. Bounded to a
+                # generous page size; query_cache stays small per class/subject.
+                for candidate in db.collection_group("query_cache").where("class", "==", class_str).limit(200).get():
+                    if candidate.id == doc_id:
+                        cache_doc = candidate
+                        break
+            if cache_doc is None:
+                logger.info("[CACHE] Semantic match found but underlying document is gone - treating as miss")
+                return None
+            logger.info(f"[CACHE] Semantic cache hit for query: '{raw_query}' -> doc_id={doc_id}")
+
+        cached_data = cache_doc.to_dict()
 
         # TTL check: a cache entry has no expiry by default, so a wrong
         # classification/answer from a since-fixed prompt or model would
@@ -253,5 +297,14 @@ def save_to_global_query_cache(raw_query: str, class_name: str, subject: str, or
                     .collection("query_cache").document(doc_id)
         doc_ref.set(payload)
         logger.info(f"[CACHE] Successfully registered query in global cache: classes/{clean_class}/subjects/{subj_str}/query_cache/{doc_id}")
+
+        # SS6.7: index this entry semantically so a later, differently-worded
+        # question with the same intent can still find it. Best-effort - a
+        # failure here must not fail the cache write itself.
+        try:
+            from backend.app.services.retrieval import qdrant_service
+            qdrant_service.index_global_cache_entry(doc_id, raw_query, class_str, subj_str)
+        except Exception as index_err:
+            logger.warning(f"[CACHE] Failed to semantically index cache entry {doc_id}: {index_err}")
     except Exception as e:
         logger.error(f"[CACHE] Failed to write cache record: {e}")

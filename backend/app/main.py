@@ -45,7 +45,8 @@ from backend.app.api.routes import (
     dashboard_router,
     bag_router,
     profile_router,
-    tts_router
+    tts_router,
+    personalization_router
 )
 
 # --- Lifespan Management ---
@@ -83,6 +84,7 @@ app.include_router(dashboard_router)
 app.include_router(bag_router)
 app.include_router(profile_router)
 app.include_router(tts_router)
+app.include_router(personalization_router)
 # Note: visual_learning_router (the standalone /api/visual_learning HTTP endpoint)
 # has been removed - nothing in the frontend calls it anymore (the "Visual
 # Learning Mode" UI it served was dead/unreachable code). The underlying

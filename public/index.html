@@ -307,7 +307,23 @@
           </p>
         </div>
 
-        <button id="save-class-btn" class="btn primary full-width" onclick="saveClassAndAvatar()" disabled>
+        <!-- Step 3: Response Style Preference (personalized_learning.md SS6.1) -->
+        <div id="style-step" style="margin-top: 1.5rem;">
+          <h3 style="margin-bottom: 0.35rem; color: #374151;">How do you like answers explained?</h3>
+          <p style="color: #6b7280; font-size: 0.85rem; margin-bottom: 1rem;">
+            You can change this anytime from your profile.
+          </p>
+          <div class="class-buttons" id="style-buttons" style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+            <button type="button" class="class-btn" data-style="storytelling" onclick="selectResponseStyle('storytelling')">📖 Storytelling</button>
+            <button type="button" class="class-btn" data-style="direct" onclick="selectResponseStyle('direct')">⚡ Direct</button>
+            <button type="button" class="class-btn" data-style="detailed" onclick="selectResponseStyle('detailed')">📋 Detailed</button>
+          </div>
+          <p id="style-error" style="color: #ef4444; font-size: 0.85rem; display: none; margin-top: 1rem;">
+            Please pick how you'd like answers explained
+          </p>
+        </div>
+
+        <button id="save-class-btn" class="btn primary full-width" onclick="saveClassAndAvatar()" disabled style="margin-top: 1.5rem;">
           Complete Profile
         </button>
       </div>

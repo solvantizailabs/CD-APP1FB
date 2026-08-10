@@ -100,6 +100,8 @@ class SmartSessionManager:
         session["current_topic_id"] = new_topic_id
         session["active_context_window"] = []
         session["current_topic_chunks"] = None
+        session["current_topic_basic_streak"] = 0
+        session["current_topic_streak_anchor"] = None
         session["last_updated"] = datetime.now().isoformat()
         
         redis_service.save_session(session_id, session, ttl=self.ttl)
@@ -147,7 +149,28 @@ class SmartSessionManager:
         turn_data["turn"] = len(session["full_history"]) + 1
         turn_data["topic_id"] = session["current_topic_id"]
         turn_data["timestamp"] = datetime.now().isoformat()
-        
+
+        # Stuck/repeat-question escalation (SS6.3): track a streak of basic
+        # questions on the SAME topic so the orchestrator can escalate its
+        # explanation strategy on the next turn instead of repeating itself.
+        # "Same topic" is decided by the caller (chat.py, via
+        # qdrant_service.text_similarity against get_streak_anchor()'s
+        # return value) and passed in as is_same_topic_as_streak - this
+        # method itself has no embedding access, it just tracks the result.
+        # A basic-phrased question on an UNRELATED topic starts a fresh
+        # streak of 1 rather than either continuing or fully resetting to 0,
+        # since it may itself become the start of a new repeat pattern.
+        if turn_data.get("is_basic_question"):
+            same_topic = turn_data.get("is_same_topic_as_streak", True)
+            if same_topic and session.get("current_topic_streak_anchor"):
+                session["current_topic_basic_streak"] = session.get("current_topic_basic_streak", 0) + 1
+            else:
+                session["current_topic_basic_streak"] = 1
+                session["current_topic_streak_anchor"] = turn_data.get("query")
+        else:
+            session["current_topic_basic_streak"] = 0
+            session["current_topic_streak_anchor"] = None
+
         session["full_history"].append(turn_data)
         session["active_context_window"].append(turn_data)
         
@@ -198,6 +221,30 @@ class SmartSessionManager:
         """
         session = redis_service.get_session(session_id)
         return session.get("current_topic_chunks") if session else None
+
+    def get_escalation_level(self, session_id: str) -> int:
+        """
+        How many consecutive basic-question repeats have happened on the
+        current topic (SS6.3). 0 = no escalation needed. Read BEFORE add_turn
+        is called for the incoming question, since it reflects the streak
+        going into this turn, not including it.
+        """
+        session = redis_service.get_session(session_id)
+        if not session:
+            return 0
+        return session.get("current_topic_basic_streak", 0)
+
+    def get_streak_anchor(self, session_id: str) -> Optional[str]:
+        """
+        The question text that started the CURRENT repeat-question streak
+        (SS6.3), or None if there's no active streak. The caller compares a
+        new basic-phrased question against this via semantic similarity to
+        decide whether it continues the streak or starts a new one.
+        """
+        session = redis_service.get_session(session_id)
+        if not session:
+            return None
+        return session.get("current_topic_streak_anchor")
 
     def get_turn(self, session_id: str, turn_number: int) -> Optional[dict]:
         """
