@@ -68,13 +68,17 @@ def run_turn(uid: str, class_name: int, session_id: str, question: str, turn_no:
     print(f"\n{'=' * 65}\nTURN {turn_no}: \"{question}\"\n{'=' * 65}")
 
     profile_ctx = profile_service.get_profile_context(uid)
-    escalation_level = session_manager.get_escalation_level(session_id)
+    raw_escalation_level = session_manager.get_escalation_level(session_id)
     student_history_hits = qdrant.retrieve_student_history(uid, question)
 
     streak_anchor = session_manager.get_streak_anchor(session_id)
     is_same_topic_as_streak = True
     if streak_anchor:
         is_same_topic_as_streak = qdrant.text_similarity(question, streak_anchor) >= qdrant.STUDENT_HISTORY_MIN_SCORE
+
+    # Same fix as chat.py: a genuinely off-topic turn must not inherit the
+    # stale pre-turn streak count.
+    escalation_level = raw_escalation_level if is_same_topic_as_streak else 0
 
     print(
         f"[PERSONALIZATION TRACE] uid={uid} preference={profile_ctx.get('response_style')} "

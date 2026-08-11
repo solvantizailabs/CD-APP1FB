@@ -121,7 +121,7 @@ function showClassSelectionModal() {
     if (existingStyle) {
         selectedResponseStyle = existingStyle;
         setTimeout(() => {
-            const styleBtn = document.querySelector(`.class-btn[data-style="${existingStyle}"]`);
+            const styleBtn = document.querySelector(`.style-option[data-style="${existingStyle}"]`);
             if (styleBtn) styleBtn.classList.add('selected');
             updateSaveButton();
         }, 100);
@@ -193,10 +193,10 @@ function selectClass(classNum) {
 function selectResponseStyle(style) {
     selectedResponseStyle = style;
 
-    document.querySelectorAll('#style-buttons .class-btn').forEach(btn => {
+    document.querySelectorAll('#style-buttons .style-option').forEach(btn => {
         btn.classList.remove('selected');
     });
-    const selected = document.querySelector(`.class-btn[data-style="${style}"]`);
+    const selected = document.querySelector(`.style-option[data-style="${style}"]`);
     if (selected) selected.classList.add('selected');
 
     const styleError = document.getElementById('style-error');

@@ -533,11 +533,10 @@ async def smart_query_engine(
             # turns. All best-effort and independent of the global cache below
             # (SS6.5 - the two layers are never merged).
             profile_ctx = profile_service.get_profile_context(uid)
-            escalation_level = session_manager.get_escalation_level(session["session_id"])
+            raw_escalation_level = session_manager.get_escalation_level(session["session_id"])
             student_history_hits = qdrant.retrieve_student_history(uid, query)
             student_profile["response_style"] = profile_ctx.get("response_style")
             student_profile["quadrant"] = profile_ctx.get("quadrant")
-            student_profile["escalation_level"] = escalation_level
             student_profile["per_student_history"] = student_history_hits
             # SS2.1: self-reported tough/easy subjects - previously collected
             # by profile_service.set_preferences() but never actually merged
@@ -556,6 +555,21 @@ async def smart_query_engine(
             is_same_topic_as_streak = True
             if streak_anchor:
                 is_same_topic_as_streak = qdrant.text_similarity(query, streak_anchor) >= qdrant.STUDENT_HISTORY_MIN_SCORE
+
+            # BUG FIX (found by hand-tracing turn-by-turn escalation math while
+            # writing a new test guide, before any live report of a failure):
+            # raw_escalation_level reflects the streak going INTO this turn -
+            # it does not yet know whether THIS turn breaks the streak. Without
+            # gating on is_same_topic_as_streak, a genuinely fresh, unrelated
+            # question right after a long same-topic streak would still be
+            # told "student has repeated this 3 times, escalate strongly" -
+            # wrong, since the streak was actually just broken. Effective
+            # escalation_level fed to the prompt must be 0 whenever this turn
+            # itself is off-topic from the streak, even though the session's
+            # internal counter (updated by add_turn, after generation) only
+            # resets for the NEXT turn.
+            escalation_level = raw_escalation_level if is_same_topic_as_streak else 0
+            student_profile["escalation_level"] = escalation_level
 
             # 2. Check global cache hit
             cached = check_global_query_cache(query, student_profile["class"], subject)

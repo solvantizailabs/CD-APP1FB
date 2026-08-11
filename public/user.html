@@ -1010,6 +1010,52 @@
         <a href="/achievements.html" class="subnav-link">
           <span>🏆</span> Achievements
         </a>
+        <div class="subnav-link" onclick="openChangeStyleModal()" style="cursor:pointer;">
+          <span>💬</span> Change Answer Preferences
+        </div>
+      </div>
+    </div>
+
+    <!-- 💬 Change Answer Preferences Modal (personalized_learning.md SS6.1) -
+         lets a student change response_style at any time, not just at
+         profile setup - writes directly to Firestore, applies on the very
+         next question (preference is read fresh from Firestore every
+         turn, no caching, so nothing else needs to "refresh"). -->
+    <div id="change-style-modal" class="additional-settings-modal" onclick="if(event.target===this) closeChangeStyleModal()">
+      <div class="additional-settings-card">
+        <div class="settings-modal-header">
+          <span class="settings-modal-title">💬 Change Answer Preferences</span>
+          <button type="button" class="settings-close-btn" onclick="closeChangeStyleModal()">✕</button>
+        </div>
+        <p style="color: var(--cg-text-muted); font-size: 0.85rem; margin: -4px 0 4px;">
+          Choose how you'd like answers explained. Applies from your very next question.
+        </p>
+        <div class="style-options" id="change-style-options">
+          <button type="button" class="style-option" data-style="storytelling" onclick="selectNewStyle('storytelling')">
+            <span class="style-option-icon">📖</span>
+            <span class="style-option-text">
+              <span class="style-option-title">Storytelling</span>
+              <span class="style-option-desc">Answers wrapped in a relatable story or analogy</span>
+            </span>
+          </button>
+          <button type="button" class="style-option" data-style="direct" onclick="selectNewStyle('direct')">
+            <span class="style-option-icon">⚡</span>
+            <span class="style-option-text">
+              <span class="style-option-title">Direct</span>
+              <span class="style-option-desc">Straight to the answer, minimal preamble</span>
+            </span>
+          </button>
+          <button type="button" class="style-option" data-style="detailed" onclick="selectNewStyle('detailed')">
+            <span class="style-option-icon">📋</span>
+            <span class="style-option-text">
+              <span class="style-option-title">Detailed</span>
+              <span class="style-option-desc">Broken into clear, numbered step-by-step points</span>
+            </span>
+          </button>
+        </div>
+        <p id="change-style-error" style="color: #ef4444; font-size: 0.8rem; display: none;">Please pick an option.</p>
+        <p id="change-style-saved" style="color: #14b8a6; font-size: 0.8rem; display: none;">✓ Saved! This applies from your next question.</p>
+        <button type="button" class="btn primary full-width" onclick="saveNewStyle()">Save Preference</button>
       </div>
     </div>
 

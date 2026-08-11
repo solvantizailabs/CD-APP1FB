@@ -1263,6 +1263,72 @@ function closeAdditionalSettings() {
     }
 }
 
+// Change Answer Preferences (personalized_learning.md SS6.1) - lets a
+// student change response_style at any time from Additional Settings, not
+// just once at profile setup. Writes straight to Firestore via the same
+// authManager used everywhere else; the backend reads preference fresh on
+// every turn, so no extra "apply" step is needed beyond saving.
+let _selectedNewStyle = null;
+
+function openChangeStyleModal() {
+    closeAdditionalSettings();
+
+    const modal = document.getElementById('change-style-modal');
+    if (!modal) return;
+
+    const current = window.authManager && authManager.userData &&
+        authManager.userData.preferences && authManager.userData.preferences.response_style;
+    _selectedNewStyle = current || null;
+
+    document.querySelectorAll('#change-style-options .style-option').forEach(btn => {
+        btn.classList.toggle('selected', btn.dataset.style === current);
+    });
+    const errorEl = document.getElementById('change-style-error');
+    const savedEl = document.getElementById('change-style-saved');
+    if (errorEl) errorEl.style.display = 'none';
+    if (savedEl) savedEl.style.display = 'none';
+
+    modal.classList.add('active');
+}
+
+function closeChangeStyleModal() {
+    const modal = document.getElementById('change-style-modal');
+    if (modal) modal.classList.remove('active');
+}
+
+function selectNewStyle(style) {
+    _selectedNewStyle = style;
+    document.querySelectorAll('#change-style-options .style-option').forEach(btn => {
+        btn.classList.toggle('selected', btn.dataset.style === style);
+    });
+    const errorEl = document.getElementById('change-style-error');
+    if (errorEl) errorEl.style.display = 'none';
+    const savedEl = document.getElementById('change-style-saved');
+    if (savedEl) savedEl.style.display = 'none';
+}
+
+async function saveNewStyle() {
+    if (!_selectedNewStyle) {
+        const errorEl = document.getElementById('change-style-error');
+        if (errorEl) errorEl.style.display = 'block';
+        return;
+    }
+    if (!window.authManager) return;
+
+    const existingPrefs = (authManager.userData && authManager.userData.preferences) || {};
+    const result = await authManager.updateUserProfile({
+        preferences: { ...existingPrefs, response_style: _selectedNewStyle }
+    });
+
+    if (result.success) {
+        const savedEl = document.getElementById('change-style-saved');
+        if (savedEl) savedEl.style.display = 'block';
+        setTimeout(closeChangeStyleModal, 1200);
+    } else {
+        alert('Could not save preference: ' + result.error);
+    }
+}
+
 // Close dropdown on outside click
 document.addEventListener('click', (e) => {
     const card = document.getElementById('profile-card-trigger');

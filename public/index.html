@@ -313,10 +313,28 @@
           <p style="color: #6b7280; font-size: 0.85rem; margin-bottom: 1rem;">
             You can change this anytime from your profile.
           </p>
-          <div class="class-buttons" id="style-buttons" style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-            <button type="button" class="class-btn" data-style="storytelling" onclick="selectResponseStyle('storytelling')">📖 Storytelling</button>
-            <button type="button" class="class-btn" data-style="direct" onclick="selectResponseStyle('direct')">⚡ Direct</button>
-            <button type="button" class="class-btn" data-style="detailed" onclick="selectResponseStyle('detailed')">📋 Detailed</button>
+          <div class="style-options" id="style-buttons">
+            <button type="button" class="style-option" data-style="storytelling" onclick="selectResponseStyle('storytelling')">
+              <span class="style-option-icon">📖</span>
+              <span class="style-option-text">
+                <span class="style-option-title">Storytelling</span>
+                <span class="style-option-desc">Answers wrapped in a relatable story or analogy</span>
+              </span>
+            </button>
+            <button type="button" class="style-option" data-style="direct" onclick="selectResponseStyle('direct')">
+              <span class="style-option-icon">⚡</span>
+              <span class="style-option-text">
+                <span class="style-option-title">Direct</span>
+                <span class="style-option-desc">Straight to the answer, minimal preamble</span>
+              </span>
+            </button>
+            <button type="button" class="style-option" data-style="detailed" onclick="selectResponseStyle('detailed')">
+              <span class="style-option-icon">📋</span>
+              <span class="style-option-text">
+                <span class="style-option-title">Detailed</span>
+                <span class="style-option-desc">Broken into clear, numbered step-by-step points</span>
+              </span>
+            </button>
           </div>
           <p id="style-error" style="color: #ef4444; font-size: 0.85rem; display: none; margin-top: 1rem;">
             Please pick how you'd like answers explained
