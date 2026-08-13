@@ -112,8 +112,32 @@ TMP_UPLOADS_DIR = os.path.join("/tmp", "uploads")
 VISUAL_LESSONS_PREFIX = "visual_lessons/"
 
 
+HYPERFRAMES_SHARED_DIR = os.path.join(PROJECT_ROOT, "hyperframes_engine", "shared")
+
+
 @app.api_route("/uploads/{file_path:path}", methods=["GET", "HEAD"])
 async def serve_upload_file(file_path: str):
+    # Real incident: every lesson gets its OWN copy of shared/ (animations.js,
+    # theme.js, icons.js, diagram-library.json, template-registry.json) -
+    # identical content, physically duplicated per lesson_id - and that
+    # per-lesson copy was never included in the Supabase backup at all (only
+    # index.html/lesson.json/scene audio were). So once a redeploy wipes local
+    # disk, every lesson's scene-sequencing engine 404s, and the browser just
+    # renders every scene's static markup at once instead of animating through
+    # them one at a time - looks like "the video isn't playing," but it's
+    # really "the engine that plays it never loaded."
+    # Fix at the source instead of trying to patch the backup: shared/ is
+    # genuinely lesson-agnostic (same 5 files for every lesson) and lives in
+    # hyperframes_engine/shared/, which is committed to git - always present
+    # on every deploy, unlike anything under ephemeral uploads/. Serve
+    # visual_lessons/{any_lesson_id}/shared/{file} straight from there,
+    # bypassing the whole per-lesson-copy/backup dance entirely.
+    if file_path.startswith(VISUAL_LESSONS_PREFIX) and "/shared/" in file_path:
+        shared_filename = file_path.split("/shared/", 1)[1]
+        shared_path = os.path.join(HYPERFRAMES_SHARED_DIR, shared_filename)
+        if os.path.exists(shared_path) and os.path.isfile(shared_path):
+            return FileResponse(shared_path)
+
     local_path = os.path.join(UPLOADS_DIR, file_path)
     if os.path.exists(local_path) and os.path.isfile(local_path):
         return FileResponse(local_path)
