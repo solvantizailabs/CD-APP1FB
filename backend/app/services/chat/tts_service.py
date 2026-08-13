@@ -4,7 +4,8 @@ import hashlib
 import logging
 import base64
 import re
-from typing import Tuple
+import tempfile
+from typing import Optional, Tuple
 from backend.app.core.redis_service import redis_service
 
 logger = logging.getLogger(__name__)
@@ -123,9 +124,17 @@ async def synthesize_text_cached(
                     chunk_audio_bytes = base64.b64decode(audios[0])
                     all_audio_bytes += chunk_audio_bytes
                     
-                    # Store in Redis cache
+                    # Store in Redis cache. redis_service.r is configured with
+                    # decode_responses=True (shared with other JSON/string
+                    # uses elsewhere), which UTF-8-decodes every value on
+                    # read - raw binary WAV bytes aren't valid UTF-8, so a
+                    # bare setex() here made EVERY cache read fail silently
+                    # and refetch from Sarvam, defeating the entire point of
+                    # caching. Base64-encoding to an ASCII string matches
+                    # what the read path above already expects and handles.
                     try:
-                        redis_service.r.setex(cache_key, TTS_CACHE_TTL, chunk_audio_bytes)
+                        encoded_audio = base64.b64encode(chunk_audio_bytes).decode("ascii")
+                        redis_service.r.setex(cache_key, TTS_CACHE_TTL, encoded_audio)
                     except Exception as cache_write_err:
                         logger.warning(f"[TTS Service] Cache write error: {cache_write_err}")
                         
@@ -134,3 +143,49 @@ async def synthesize_text_cached(
                     raise
 
     return all_audio_bytes, "wav"
+
+
+async def synthesize_and_persist_answer_audio(
+    text: str,
+    storage_key: str,
+    language: str = "en-IN",
+    speaker: str = "ritu",
+) -> Optional[str]:
+    """
+    Synthesizes a text answer's full audio and uploads it to Supabase so a
+    student replaying this answer from history hears the SAME saved audio
+    instead of triggering a fresh (billed) TTS call every time they revisit
+    it. Reuses synthesize_text_cached's per-chunk Redis cache, so if this
+    exact text was already spoken live moments ago with the same
+    speaker/language, most/all of the underlying Sarvam calls are cache
+    hits, not new billed synthesis.
+
+    Only supports the "sarvam" model - Azure has no caching layer here and
+    browser TTS produces no audio bytes at all (device-side speech
+    synthesis), so neither has anything persistable to save.
+
+    Returns the durable Supabase URL, or None if synthesis/upload failed -
+    callers should treat that as "no audio to save" and move on, not as a
+    reason to fail the whole answer.
+    """
+    try:
+        audio_bytes, fmt = await synthesize_text_cached(text=text, language=language, speaker=speaker)
+        if not audio_bytes:
+            return None
+
+        from backend.app.core.supabase_storage import upload_file_to_supabase
+
+        with tempfile.NamedTemporaryFile(suffix=f".{fmt}", delete=False) as tmp:
+            tmp.write(audio_bytes)
+            tmp_path = tmp.name
+
+        try:
+            return upload_file_to_supabase(tmp_path, f"text_answers/{storage_key}.{fmt}")
+        finally:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+    except Exception as e:
+        logger.warning(f"[TTS Service] Could not persist answer audio for '{storage_key}': {e}")
+        return None

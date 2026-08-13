@@ -1723,6 +1723,16 @@
   color: #F87171;
 }
 
+/* profile-dropdown.css defines its OWN light-themed .profile-dropdown-menu
+   rule (for a different, light-themed component elsewhere) and loads after
+   this file, so its white background silently wins the cascade on this dark
+   page. Re-assert the dark version here, scoped to this page's body class,
+   so it always wins regardless of stylesheet load order. */
+.dark-canvas-body .profile-dropdown-menu {
+  background: #0B191B;
+  border: 1px solid rgba(20, 184, 166, 0.3);
+}
+
 /* Additional Settings Nested Modal / Sub-menu Drawer */
 .additional-settings-modal {
   position: fixed;

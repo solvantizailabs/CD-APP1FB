@@ -32,7 +32,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(MAIN_DIR, "..", ".."))
 env_path = os.path.join(PROJECT_ROOT, ".env")
 load_dotenv(dotenv_path=env_path, override=True)
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -46,7 +46,8 @@ from backend.app.api.routes import (
     bag_router,
     profile_router,
     tts_router,
-    personalization_router
+    personalization_router,
+    history_router
 )
 
 # --- Lifespan Management ---
@@ -85,6 +86,7 @@ app.include_router(bag_router)
 app.include_router(profile_router)
 app.include_router(tts_router)
 app.include_router(personalization_router)
+app.include_router(history_router)
 # Note: visual_learning_router (the standalone /api/visual_learning HTTP endpoint)
 # has been removed - nothing in the frontend calls it anymore (the "Visual
 # Learning Mode" UI it served was dead/unreachable code). The underlying
@@ -107,16 +109,38 @@ app.mount("/static", StaticFiles(directory=PUBLIC_DIR), name="static")
 
 TMP_UPLOADS_DIR = os.path.join("/tmp", "uploads")
 
-@app.get("/uploads/{file_path:path}")
+VISUAL_LESSONS_PREFIX = "visual_lessons/"
+
+
+@app.api_route("/uploads/{file_path:path}", methods=["GET", "HEAD"])
 async def serve_upload_file(file_path: str):
     local_path = os.path.join(UPLOADS_DIR, file_path)
     if os.path.exists(local_path) and os.path.isfile(local_path):
         return FileResponse(local_path)
-    
+
     tmp_path = os.path.join(TMP_UPLOADS_DIR, file_path)
     if os.path.exists(tmp_path) and os.path.isfile(tmp_path):
         return FileResponse(tmp_path)
-        
+
+    # Local disk is ephemeral - wiped on redeploy/restart, and not shared
+    # across instances if this ever runs behind more than one. Every visual
+    # lesson file is ALSO backed up to Supabase at generation time (see
+    # hyperframes_engine_bridge.py's upload_file_to_supabase calls), so fall
+    # back to that durable copy instead of 404ing when the local one is gone.
+    if file_path.startswith(VISUAL_LESSONS_PREFIX):
+        from backend.app.core.supabase_storage import get_supabase_config, BUCKET_NAME
+        supabase_path = file_path[len(VISUAL_LESSONS_PREFIX):]
+        supabase_url, _ = get_supabase_config()
+        cloud_url = f"{supabase_url}/storage/v1/object/public/{BUCKET_NAME}/{supabase_path}"
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                head_resp = await client.head(cloud_url)
+            if head_resp.status_code == 200:
+                return RedirectResponse(url=cloud_url)
+        except Exception as e:
+            print(f"[Uploads] Supabase fallback check failed for {file_path}: {e}")
+
     raise HTTPException(status_code=404, detail="File not found")
 
 # --- HTML TEMPLATE ROUTING ---
@@ -167,6 +191,19 @@ async def achievements_page():
 @app.get("/dashboard")
 async def dashboard_page():
     return FileResponse(os.path.join(PUBLIC_DIR, 'dashboard.html'))
+
+@app.get("/my-bag")
+async def my_bag_page():
+    # This page is under active iteration and got mistaken for "the fix
+    # didn't apply" twice already because browsers will heuristically cache
+    # an HTML document response (no explicit Cache-Control here previously)
+    # even though FileResponse always reads the current file from disk on
+    # the server side. Force revalidation so a reload always reflects
+    # what's actually on disk, not a stale browser copy.
+    return FileResponse(
+        os.path.join(PUBLIC_DIR, 'my-bag-component.html'),
+        headers={"Cache-Control": "no-cache, must-revalidate"},
+    )
 
 @app.get("/mode-selection")
 async def mode_selection_page():

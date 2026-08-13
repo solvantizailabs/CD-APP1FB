@@ -102,6 +102,9 @@ yarn.lock
 *.sqlite
 *.sqlite3
 
+# Runtime chat interaction logs (real student query/answer data, not code)
+consolidated_deployment_outputs/
+
 # ============ KEEP THESE COMMITTED ============
 !chapterdata/chapters_cache.json
 !.gitignore

@@ -175,6 +175,134 @@ class MyBag {
         }
     }
 
+    async loadVisualLibrary() {
+        if (!this.uid) {
+            console.error('[MY BAG] No user ID available');
+            return;
+        }
+
+        const grid = document.getElementById('visual-library-grid');
+        if (!grid) {
+            console.error('[MY BAG] ❌ visual-library-grid element not found');
+            return;
+        }
+
+        try {
+            console.log('[MY BAG] Fetching visual library for uid:', this.uid);
+            const response = await fetch(`/api/bag/visual-library?uid=${this.uid}`);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+            const data = await response.json();
+            const items = Array.isArray(data.items) ? data.items : [];
+
+            grid.innerHTML = '';
+
+            if (items.length === 0) {
+                grid.innerHTML = `
+                    <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: rgba(255,255,255,0.5);">
+                        <p>No saved videos yet!</p>
+                        <p style="font-size: 0.9rem; margin-top: 10px;">Save one from History &rarr; My videos with the 🎒 icon.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            const SUBJECT_STYLES = {
+                science: { gradient: 'linear-gradient(135deg,#10b981,#06b6d4)', icon: '🔬' },
+                maths: { gradient: 'linear-gradient(135deg,#f59e0b,#f97316)', icon: '🔢' },
+                social: { gradient: 'linear-gradient(135deg,#8b5cf6,#ec4899)', icon: '🌍' },
+                english: { gradient: 'linear-gradient(135deg,#6366f1,#4f46e5)', icon: '📖' },
+                uncategorized: { gradient: 'linear-gradient(135deg,#64748b,#475569)', icon: '❓' },
+            };
+
+            items.forEach((item) => {
+                const style = SUBJECT_STYLES[item.subject] || SUBJECT_STYLES.uncategorized;
+                const card = document.createElement('div');
+                card.className = 'notebook-card visual-library-card';
+
+                card.innerHTML = `
+                    <div class="notebook-cover" style="background: ${style.gradient}; position: relative;">
+                        <span style="font-size: 3rem;">${style.icon}</span>
+                        <span class="visual-library-badge">▶ Lesson</span>
+                        <button
+                            class="visual-library-remove-btn"
+                            title="Remove from Visual Library">
+                            ⋮
+                        </button>
+                    </div>
+                    <div class="notebook-title">${item.chapter_name || item.query || 'Video lesson'}</div>
+                    <div class="notebook-meta">${item.subject || 'uncategorized'}</div>
+                `;
+
+                card.onclick = () => this.replayVideo(item.doc_id);
+                const removeBtn = card.querySelector('.visual-library-remove-btn');
+                if (removeBtn) {
+                    removeBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        this.removeFromVisualLibrary(item.item_id);
+                    };
+                }
+                grid.appendChild(card);
+            });
+
+            console.log('[MY BAG] ✅ Rendered', items.length, 'visual library items');
+
+        } catch (error) {
+            console.error('[MY BAG] Failed to load visual library:', error);
+            grid.innerHTML = `
+                <div style="grid-column: 1/-1; text-align: center; padding: 40px; color: rgba(255,100,100,0.8);">
+                    <p>❌ Error loading Visual Library</p>
+                    <p style="font-size: 0.9rem; margin-top: 10px;">${error.message}</p>
+                </div>
+            `;
+        }
+    }
+
+    // Reuses the exact same replay chain History's "My videos" tab uses
+    // (POST /api/history/replay -> window.injectReplayedTurn) so playback,
+    // narration, and the "Show Text Answer" toggle all behave identically -
+    // no separate player is built for this entry point.
+    async replayVideo(docId) {
+        if (!this.uid || !docId) return;
+
+        this.close();
+
+        try {
+            const resp = await fetch('/api/history/replay', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uid: this.uid, doc_id: docId }),
+            });
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            const replayData = await resp.json();
+
+            if (typeof window.injectReplayedTurn === 'function') {
+                window.injectReplayedTurn(replayData);
+            } else {
+                console.error('[MY BAG] injectReplayedTurn is not available yet.');
+            }
+        } catch (error) {
+            console.error('[MY BAG] Failed to replay video:', error);
+        }
+    }
+
+    async removeFromVisualLibrary(itemId) {
+        if (!this.uid || !itemId) return;
+
+        try {
+            const response = await fetch('/api/bag/visual-library/remove', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uid: this.uid, item_id: itemId }),
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            await this.loadVisualLibrary();
+        } catch (error) {
+            console.error('[MY BAG] Failed to remove visual library item:', error);
+            alert('Failed to remove from Visual Library: ' + error.message);
+        }
+    }
+
     showCreateModal() {
         const overlay = document.getElementById('create-notebook-overlay');
         if (overlay) {
@@ -313,7 +441,11 @@ const myBag = new MyBag();
 window.myBag = myBag;
 
 // Expose global functions
-window.openBag = () => myBag.open();
+// My Bag is unified into the standalone /my-bag page now (Notebooks +
+// Visual Library) - the old slide-out drawer here is retired as a live
+// entry point (kept in place, just unreachable) so there's only one My Bag
+// experience instead of two divergent ones.
+window.openBag = () => { window.location.href = '/my-bag'; };
 window.closeBag = () => myBag.close();
 window.showCreateNotebookModal = () => myBag.showCreateModal();
 window.hideCreateNotebookModal = () => myBag.hideCreateModal();
@@ -427,28 +559,21 @@ window.saveNote = async function () {
 window.showBagTab = (tabName) => {
     console.log('[MY BAG] Switching to tab:', tabName);
 
-    // Switch tabs
-    const notebooksTab = document.getElementById('notebooks-tab');
-    const savedTab = document.getElementById('saved-tab');
+    const tabs = {
+        notebooks: { tabEl: document.getElementById('notebooks-tab'), viewEl: document.getElementById('notebooks-view') },
+        saved: { tabEl: document.getElementById('saved-tab'), viewEl: document.getElementById('saved-view') },
+        'visual-library': { tabEl: document.getElementById('visual-library-tab'), viewEl: document.getElementById('visual-library-view') },
+    };
 
-    if (tabName === 'notebooks') {
-        if (notebooksTab) {
-            notebooksTab.classList.add('active');
-        }
-        if (savedTab) {
-            savedTab.classList.remove('active');
-        }
-        document.getElementById('notebooks-view').style.display = 'block';
-        document.getElementById('saved-view').style.display = 'none';
-    } else {
-        if (savedTab) {
-            savedTab.classList.add('active');
-        }
-        if (notebooksTab) {
-            notebooksTab.classList.remove('active');
-        }
-        document.getElementById('notebooks-view').style.display = 'none';
-        document.getElementById('saved-view').style.display = 'block';
+    Object.keys(tabs).forEach((key) => {
+        const { tabEl, viewEl } = tabs[key];
+        const isActive = key === tabName;
+        if (tabEl) tabEl.classList.toggle('active', isActive);
+        if (viewEl) viewEl.style.display = isActive ? 'block' : 'none';
+    });
+
+    if (tabName === 'visual-library') {
+        myBag.loadVisualLibrary();
     }
 };
 

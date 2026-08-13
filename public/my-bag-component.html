@@ -1,5 +1,25 @@
-<!-- My Bag Modal/Sidebar Component -->
-<style>
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Bag - CHADUVU GURU</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/css/my-bag.css?v=1.1">
+</head>
+
+<body style="margin:0;">
+  <!-- Firebase SDK (same order/version as user.html) -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+  <script src="/static/firebase-config.js"></script>
+  <script src="/static/auth.js"></script>
+
+  <!-- My Bag Modal/Sidebar Component -->
+  <style>
     .my-bag-overlay {
         display: none;
         position: fixed;
@@ -22,6 +42,7 @@
         right: -450px;
         top: 0;
         width: 450px;
+        max-width: 100vw;
         height: 100%;
         background: white;
         box-shadow: -4px 0 20px rgba(0, 0, 0, 0.1);
@@ -69,13 +90,20 @@
             opacity: 1;
         }
     }
-</style>
 
-<!-- Overlay -->
-<div id="my-bag-overlay" class="my-bag-overlay" onclick="closeBag()"></div>
+    @media (max-width: 768px) {
+        .my-bag-sidebar {
+            width: 100vw;
+            right: -100vw;
+        }
+    }
+  </style>
 
-<!-- Sidebar -->
-<div id="my-bag-sidebar" class="my-bag-sidebar">
+  <!-- Overlay -->
+  <div id="my-bag-overlay" class="my-bag-overlay" onclick="closeBag()"></div>
+
+  <!-- Sidebar -->
+  <div id="my-bag-sidebar" class="my-bag-sidebar">
     <!-- Header -->
     <div
         class="bg-gradient-to-r from-purple-600 to-pink-500 text-white p-6 flex justify-between items-center sticky top-0 z-10">
@@ -98,12 +126,16 @@
         <!-- Tabs -->
         <div class="flex gap-2 mb-6 bg-gray-100 p-1 rounded-lg">
             <button onclick="showBagTab('notebooks')" id="notebooks-tab"
-                class="flex-1 py-2 px-4 rounded-lg font-medium transition bg-white text-purple-600 shadow-sm">
+                class="flex-1 py-2 px-3 rounded-lg font-medium transition bg-white text-purple-600 shadow-sm text-sm">
                 📚 Notebooks
             </button>
             <button onclick="showBagTab('saved')" id="saved-tab"
-                class="flex-1 py-2 px-4 rounded-lg font-medium transition text-gray-600 hover:bg-white/50">
-                💾 Saved Items
+                class="flex-1 py-2 px-3 rounded-lg font-medium transition text-gray-600 hover:bg-white/50 text-sm">
+                💾 Saved
+            </button>
+            <button onclick="showBagTab('visual-library')" id="visual-library-tab"
+                class="flex-1 py-2 px-3 rounded-lg font-medium transition text-gray-600 hover:bg-white/50 text-sm">
+                🎬 Library
             </button>
         </div>
 
@@ -131,11 +163,19 @@
                 <p class="text-gray-400 text-center py-8">No items saved yet</p>
             </div>
         </div>
-    </div>
-</div>
 
-<!-- Create Notebook Modal -->
-<div id="create-notebook-modal"
+        <!-- Visual Library View -->
+        <div id="visual-library-view" style="display: none;">
+            <p class="text-sm text-gray-500 mb-4">Videos you've saved from History for quick revision.</p>
+            <div id="visual-library-grid" class="grid grid-cols-1 gap-4">
+                <p class="text-gray-400 text-center py-8">No saved videos yet</p>
+            </div>
+        </div>
+    </div>
+  </div>
+
+  <!-- Create Notebook Modal -->
+  <div id="create-notebook-modal"
     class="fixed inset-0 bg-black/50 backdrop-blur-sm z-[1001] hidden flex items-center justify-center">
     <div class="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl animate-bounce-in m-4">
         <h3 class="text-2xl font-bold mb-6 text-gray-800 flex items-center gap-2">
@@ -192,12 +232,13 @@
             </button>
         </div>
     </div>
-</div>
+  </div>
 
-<script>
+  <script>
     // My Bag State
     let currentNotebooks = [];
     let currentItems = [];
+    let currentVisualLibraryItems = [];
     let selectedColor = '#4F46E5';
 
     // Open/Close
@@ -208,34 +249,46 @@
     }
 
     function closeBag() {
-        document.getElementById('my-bag-overlay').classList.remove('active');
-        document.getElementById('my-bag-sidebar').classList.remove('active');
+        // This page has nothing behind the sidebar (unlike the old embedded
+        // drawer, which sat on top of the live chat) - just hiding it would
+        // leave a blank white screen, so closing returns to the chat.
+        window.location.href = '/user';
     }
+
+    // This page IS the My Bag experience (no chat behind it), so open the
+    // sidebar as soon as the student is confirmed logged in - matches the
+    // guard pattern user.html itself uses (redirect home if no user),
+    // rather than depending on authManager's own async init timing.
+    firebase.auth().onAuthStateChanged((user) => {
+        if (!user) {
+            window.location.href = '/';
+            return;
+        }
+        openBag();
+    });
 
     // Tabs
     function showBagTab(tab) {
-        const notebooksTab = document.getElementById('notebooks-tab');
-        const savedTab = document.getElementById('saved-tab');
-        const notebooksView = document.getElementById('notebooks-view');
-        const savedView = document.getElementById('saved-view');
+        const tabs = {
+            notebooks: { tabEl: document.getElementById('notebooks-tab'), viewEl: document.getElementById('notebooks-view'), load: loadNotebooks },
+            saved: { tabEl: document.getElementById('saved-tab'), viewEl: document.getElementById('saved-view'), load: loadItems },
+            'visual-library': { tabEl: document.getElementById('visual-library-tab'), viewEl: document.getElementById('visual-library-view'), load: loadVisualLibrary },
+        };
 
-        if (tab === 'notebooks') {
-            notebooksTab.classList.add('bg-white', 'text-purple-600', 'shadow-sm');
-            notebooksTab.classList.remove('text-gray-600');
-            savedTab.classList.remove('bg-white', 'text-purple-600', 'shadow-sm');
-            savedTab.classList.add('text-gray-600');
-            notebooksView.style.display = 'block';
-            savedView.style.display = 'none';
-            loadNotebooks();
-        } else {
-            savedTab.classList.add('bg-white', 'text-purple-600', 'shadow-sm');
-            savedTab.classList.remove('text-gray-600');
-            notebooksTab.classList.remove('bg-white', 'text-purple-600', 'shadow-sm');
-            notebooksTab.classList.add('text-gray-600');
-            savedView.style.display = 'block';
-            notebooksView.style.display = 'none';
-            loadItems();
-        }
+        Object.keys(tabs).forEach((key) => {
+            const { tabEl, viewEl } = tabs[key];
+            const isActive = key === tab;
+            if (isActive) {
+                tabEl.classList.add('bg-white', 'text-purple-600', 'shadow-sm');
+                tabEl.classList.remove('text-gray-600');
+            } else {
+                tabEl.classList.remove('bg-white', 'text-purple-600', 'shadow-sm');
+                tabEl.classList.add('text-gray-600');
+            }
+            viewEl.style.display = isActive ? 'block' : 'none';
+        });
+
+        tabs[tab].load();
     }
 
     // Notebook Creation
@@ -333,8 +386,8 @@
         }
 
         grid.innerHTML = currentNotebooks.map(nb => `
-        <div class="notebook-card bg-white border-2 rounded-xl p-5 shadow-sm cursor-pointer" 
-             style="border-color: ${nb.color}" 
+        <div class="notebook-card bg-white border-2 rounded-xl p-5 shadow-sm cursor-pointer"
+             style="border-color: ${nb.color}"
              onclick="openNotebookEditor('${nb.notebook_id}')">
             <div class="flex items-start justify-between mb-3">
                 <div class="flex items-center gap-3">
@@ -358,7 +411,7 @@
     }
 
     function openNotebookEditor(notebookId) {
-        window.location.href = `/notebook-editor.html?id=${notebookId}`;
+        window.location.href = `/static/notebook-editor.html?id=${notebookId}`;
     }
 
     // Load Items
@@ -519,6 +572,95 @@
         }
     }
 
+    // Visual Library - saved video-lesson references, same
+    // authManager Bearer-token pattern as the rest of this page, calling
+    // the already-built /api/bag/visual-library endpoints (bag.py).
+    async function loadVisualLibrary() {
+        if (!authManager.currentUser) {
+            document.getElementById('visual-library-grid').innerHTML = '<p class="text-gray-400 text-center py-8">Please log in to see your Visual Library.</p>';
+            return;
+        }
+        const userToken = await authManager.currentUser.getIdToken();
+        try {
+            const response = await fetch(`/api/bag/visual-library?uid=${authManager.currentUser.uid}`, {
+                headers: { 'Authorization': `Bearer ${userToken}` }
+            });
+            const data = await response.json();
+            currentVisualLibraryItems = data.items || [];
+            renderVisualLibrary();
+        } catch (error) {
+            console.error('Error loading visual library:', error);
+        }
+    }
+
+    function renderVisualLibrary() {
+        const grid = document.getElementById('visual-library-grid');
+        if (currentVisualLibraryItems.length === 0) {
+            grid.innerHTML = '<p class="text-gray-400 text-center py-8">No saved videos yet. Save one from History &rarr; My videos with the 🎒 icon.</p>';
+            return;
+        }
+
+        grid.innerHTML = currentVisualLibraryItems.map(item => `
+        <div class="notebook-card bg-white border-2 rounded-xl p-5 shadow-sm cursor-pointer"
+             style="border-color: #10B981"
+             onclick="replayVisualLibraryItem('${item.doc_id}')">
+            <div class="flex items-start justify-between mb-3">
+                <div class="flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-lg flex items-center justify-center text-2xl" style="background-color: #10B98120">
+                        ${getSubjectEmoji(item.subject || 'general')}
+                    </div>
+                    <div>
+                        <h4 class="font-bold text-gray-800">${item.chapter_name || item.query || 'Video lesson'}</h4>
+                        <p class="text-sm text-gray-500 capitalize">${item.subject || 'uncategorized'}</p>
+                    </div>
+                </div>
+                <button onclick="event.stopPropagation(); removeFromVisualLibrary('${item.item_id}')" class="text-gray-400 hover:text-red-500 transition">
+                    🗑️
+                </button>
+            </div>
+            <div class="text-sm text-gray-600">▶ Lesson</div>
+        </div>
+    `).join('');
+    }
+
+    // This page has no chat/video-player surface of its own, so playback
+    // happens on /user - the same replay chain History's own video cards
+    // use (POST /api/history/replay -> window.injectReplayedTurn), just
+    // triggered there via a query param instead of a click handler.
+    function replayVisualLibraryItem(docId) {
+        window.location.href = `/user?replay_doc_id=${encodeURIComponent(docId)}`;
+    }
+
+    async function removeFromVisualLibrary(itemId) {
+        if (!authManager.currentUser) {
+            alert('You must be logged in to remove an item.');
+            return;
+        }
+        const userToken = await authManager.currentUser.getIdToken();
+        try {
+            const response = await fetch('/api/bag/visual-library/remove', {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${userToken}`
+                },
+                body: JSON.stringify({
+                    uid: authManager.currentUser.uid,
+                    item_id: itemId
+                })
+            });
+
+            if (response.ok) {
+                loadVisualLibrary();
+            } else {
+                const errorData = await response.json();
+                alert(`Failed to remove from Visual Library: ${errorData.detail || 'Unknown error'}`);
+            }
+        } catch (error) {
+            console.error('Error removing visual library item:', error);
+        }
+    }
+
     // Helpers
     function getSubjectEmoji(subject) {
         const emojis = {
@@ -539,4 +681,7 @@
         document.body.appendChild(notification);
         setTimeout(() => notification.remove(), 3000);
     }
-</script>
+  </script>
+</body>
+
+</html>

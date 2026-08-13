@@ -46,6 +46,14 @@ class ToggleFavoriteRequest(BaseModel):
     uid: str
     item_id: str
 
+class VisualLibraryAddRequest(BaseModel):
+    uid: str
+    doc_id: str
+
+class VisualLibraryRemoveRequest(BaseModel):
+    uid: str
+    item_id: str
+
 
 @router.get("/api/notes/list", tags=["Notes"])
 async def list_notes_endpoint(uid: str = Query(...)):
@@ -199,4 +207,37 @@ async def toggle_favorite_endpoint(request: ToggleFavoriteRequest):
         return {"success": True, "is_favorite": new_status}
     except Exception as e:
         logger.error(f"Failed to toggle favorite: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/bag/visual-library/add", tags=["My Bag"])
+async def add_to_visual_library_endpoint(request: VisualLibraryAddRequest):
+    """Save a reference to a video lesson (a users/{uid}/queries/{doc_id} doc) into Visual Library."""
+    try:
+        item_id = bag_service.add_to_visual_library(request.uid, request.doc_id)
+        return {"success": True, "item_id": item_id, "message": "Saved to Visual Library!"}
+    except Exception as e:
+        logger.error(f"Failed to add to visual library: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/api/bag/visual-library/remove", tags=["My Bag"])
+async def remove_from_visual_library_endpoint(request: VisualLibraryRemoveRequest):
+    """Remove a saved video reference from Visual Library."""
+    try:
+        bag_service.remove_from_visual_library(request.uid, request.item_id)
+        return {"success": True, "message": "Removed from Visual Library"}
+    except Exception as e:
+        logger.error(f"Failed to remove visual library item: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/bag/visual-library", tags=["My Bag"])
+async def get_visual_library_endpoint(uid: str = Query(...)):
+    """Get all saved video-lesson references for a user, resolved against their source query docs."""
+    try:
+        items = bag_service.get_visual_library(uid)
+        return {"items": items, "total": len(items)}
+    except Exception as e:
+        logger.error(f"Failed to get visual library: {e}")
         raise HTTPException(status_code=500, detail=str(e))

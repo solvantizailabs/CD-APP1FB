@@ -10,10 +10,10 @@
   <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
   <link href="/static/css/inline-notebook.css" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
-  <link rel="stylesheet" href="/static/conversation.css">
+  <link rel="stylesheet" href="/static/conversation.css?v=1.1">
   <link rel="stylesheet" href="/static/voice-overlay.css">
   <link rel="stylesheet" href="/static/sidebar.css">
-  <link rel="stylesheet" href="/static/css/my-bag.css">
+  <link rel="stylesheet" href="/static/css/my-bag.css?v=1.1">
   <link rel="stylesheet" href="/static/save-selection.css">
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -998,21 +998,63 @@
           <span class="settings-modal-title">⚙️ Additional Settings</span>
           <button type="button" class="settings-close-btn" onclick="closeAdditionalSettings()">✕</button>
         </div>
-        <a href="/dashboard.html" class="subnav-link">
+        <a href="/dashboard" class="subnav-link">
           <span>📊</span> My Dashboard
         </a>
-        <a href="/my-bag-component.html" class="subnav-link">
+        <a href="/my-bag" class="subnav-link">
           <span>🎒</span> My Bag
         </a>
-        <a href="/profile.html" class="subnav-link">
+        <a href="/profile" class="subnav-link">
           <span>👤</span> My Profile
         </a>
-        <a href="/achievements.html" class="subnav-link">
+        <a href="/achievements" class="subnav-link">
           <span>🏆</span> Achievements
         </a>
         <div class="subnav-link" onclick="openChangeStyleModal()" style="cursor:pointer;">
           <span>💬</span> Change Answer Preferences
         </div>
+      </div>
+    </div>
+
+    <!-- 📜 History Full Page (view-swap within user.html, not a floating modal -
+         covers the entire viewport including the header, with an explicit
+         "Back to chat" action instead of a small close icon) -->
+    <div id="history-modal" class="history-page">
+      <div class="history-page-inner">
+        <div class="history-header-row">
+          <button type="button" class="history-back-btn" onclick="closeHistoryModal()">
+            <span>←</span> Back to chat
+          </button>
+          <div class="history-profile-row">
+            <div class="history-profile-avatar" id="history-profile-avatar">👤</div>
+            <div>
+              <p class="history-profile-name" id="history-profile-name">Loading...</p>
+              <p class="history-profile-grade" id="history-profile-grade">Class...</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="history-title-row">
+          <p class="history-title">History</p>
+          <select id="history-subject-filter" class="history-subject-select">
+            <option value="all">All subjects</option>
+          </select>
+        </div>
+
+        <div class="history-tabs">
+          <button type="button" class="history-tab-btn active" id="history-tab-videos" onclick="switchHistoryTab('videos')">
+            <span>▶</span> My videos
+          </button>
+          <button type="button" class="history-tab-btn" id="history-tab-questions" onclick="switchHistoryTab('questions')">
+            <span>💬</span> My questions
+          </button>
+        </div>
+
+        <div id="history-loading" class="history-loading">Loading history...</div>
+        <div id="history-empty" class="history-empty" style="display:none;">No history yet. Ask a question to get started.</div>
+
+        <div id="history-panel-videos" class="history-panel"></div>
+        <div id="history-panel-questions" class="history-panel" style="display:none;"></div>
       </div>
     </div>
 
@@ -1109,7 +1151,7 @@
       'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.4.120/build/pdf.worker.min.js';
   </script>
 
-  <link rel="stylesheet" href="/static/conversation.css">
+  <link rel="stylesheet" href="/static/conversation.css?v=1.1">
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
@@ -1127,6 +1169,10 @@
   <link rel="stylesheet" href="/static/profile-dropdown.css">
   <script src="/static/profile-dropdown.js"></script>
 
+  <!-- History -->
+  <link rel="stylesheet" href="/static/css/history.css?v=1.3">
+  <script src="/static/history.js?v=1.2"></script>
+
   <!-- TTS Manager (load FIRST so it's ready when script.js runs) -->
   <script src="/static/js/tts-manager.js?v=2.3"></script>
 
@@ -1134,7 +1180,7 @@
   <script src="/static/js/tts-streaming-manager.js?v=2.7"></script>
 
   <!-- Main script -->
-  <script src="/static/script.js?v=2.8"></script>
+  <script src="/static/script.js?v=3.3"></script>
   <script src="/static/conversation.js?v=2.3"></script>
   <script src="/static/save-selection.js?v=2.3"></script>
 
@@ -1280,6 +1326,7 @@
           }
 
           // Store normalized class globally for script.js and conversation functions to access
+          window.currentUser = user;
           window.userData = userData;
           const rawClass = userData.class || localStorage.getItem('userClass') || '';
           const normalizedClass = String(rawClass).replace(/\D/g, '');
@@ -1296,6 +1343,14 @@
           } else {
             console.error('[USER PAGE] ❌ populateSubjectsForUser function not found!');
           }
+
+          // Visual Library (my-bag-component.html) has no player of its own,
+          // so a saved video's card there links here with ?replay_doc_id=...
+          // instead of triggering playback in place. Reuses the exact same
+          // two-step replay chain History's own video cards use (see
+          // history.js's replayHistoryItem) rather than building a second
+          // replay path.
+          maybeReplayFromQueryParam(user.uid);
         } else {
           console.error('[USER PAGE] User document not found in Firestore');
           alert('User profile not found. Please contact admin.');
@@ -1305,6 +1360,40 @@
         alert('Error loading your profile: ' + error.message);
       }
     });
+
+    // Entry hook for Visual Library card clicks (my-bag-component.html),
+    // which navigate here as /user?replay_doc_id=<id> since that page has
+    // no chat/video-player surface of its own. Mirrors history.js's
+    // replayHistoryItem exactly (same endpoint, same injectReplayedTurn
+    // call) so playback behaves identically regardless of entry point.
+    async function maybeReplayFromQueryParam(uid) {
+      const params = new URLSearchParams(window.location.search);
+      const docId = params.get('replay_doc_id');
+      if (!docId || !uid) return;
+
+      // Strip the param immediately so a refresh doesn't re-trigger replay.
+      params.delete('replay_doc_id');
+      const newSearch = params.toString();
+      window.history.replaceState({}, '', window.location.pathname + (newSearch ? `?${newSearch}` : ''));
+
+      try {
+        const resp = await fetch('/api/history/replay', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uid, doc_id: docId }),
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const replayData = await resp.json();
+
+        if (typeof window.injectReplayedTurn === 'function') {
+          window.injectReplayedTurn(replayData);
+        } else {
+          console.error('[USER PAGE] injectReplayedTurn is not available yet.');
+        }
+      } catch (e) {
+        console.error('[USER PAGE] Failed to replay from Visual Library:', e);
+      }
+    }
 
     // Toggle left pane (PDF viewer) functionality
     document.addEventListener('DOMContentLoaded', () => {
@@ -1618,7 +1707,7 @@
   </script>
 
   <!-- My Bag Component -->
-  <link rel="stylesheet" href="/static/css/my-bag.css">
+  <link rel="stylesheet" href="/static/css/my-bag.css?v=1.1">
 
   <!-- Bag Overlay -->
   <div id="my-bag-overlay" class="my-bag-overlay" onclick="closeBag()"></div>
@@ -1648,10 +1737,19 @@
       <!-- Tabs -->
       <div class="bag-tabs">
         <button onclick="showBagTab('notebooks')" id="notebooks-tab" class="bag-tab active">
-          <span>📚</span> Notebooks
+          <span>📚</span>
+          <span class="bag-tab-label-full">Notebooks</span>
+          <span class="bag-tab-label-short">Notes</span>
         </button>
         <button onclick="showBagTab('saved')" id="saved-tab" class="bag-tab">
-          <span>💾</span> Saved
+          <span>💾</span>
+          <span class="bag-tab-label-full">Saved</span>
+          <span class="bag-tab-label-short">Saved</span>
+        </button>
+        <button onclick="showBagTab('visual-library')" id="visual-library-tab" class="bag-tab">
+          <span>🎬</span>
+          <span class="bag-tab-label-full">Visual Library</span>
+          <span class="bag-tab-label-short">Library</span>
         </button>
       </div>
 
@@ -1676,6 +1774,14 @@
           </select>
         </div>
         <div id="items-list" class="notebook-grid">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- Visual Library View -->
+      <div id="visual-library-view" style="display: none;">
+        <p class="text-xs opacity-70" style="margin: 0 0 12px;">Videos you've saved from History for quick revision.</p>
+        <div id="visual-library-grid" class="notebook-grid">
           <!-- Populated by JS -->
         </div>
       </div>
@@ -1764,7 +1870,7 @@
     </div>
   </div>
 
-  <script src="/static/js/my-bag.js"></script>
+  <script src="/static/js/my-bag.js?v=1.2"></script>
   <script src="/static/js/inline-notebook.js"></script>
 
   <!-- Save-to-Bag Component Integration -->

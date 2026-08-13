@@ -398,12 +398,60 @@ def run_orchestrator_pipeline(raw_query: str, student_profile: Dict[str, Any]) -
         escalation_instruction = "none"
 
     per_student_history = student_profile.get("per_student_history") or []
+    # Set True below whenever a MANDATORY FEEDBACK REQUIREMENT line is actually
+    # emitted into the prompt. Live testing (praneeth10_live_test_scenario.md
+    # Q1) found the main orchestrator call correctly received this directive,
+    # yet the final answer still ignored it - traced to the restyle pass
+    # below, which unconditionally re-imposes the stored "storytelling"/
+    # "detailed" preference with zero awareness of a feedback override,
+    # silently undoing whatever the main call did. This flag lets the restyle
+    # gate skip itself when a mandatory correction is in play for this turn.
+    mandatory_feedback_active = False
     if per_student_history:
         history_lines = []
         for h in per_student_history[:3]:
             q = h.get("reformulated_question") or h.get("question") or ""
-            summary = (h.get("answer_summary") or "")[:200]
-            history_lines.append(f"- Previously asked: \"{q}\" -> covered: {summary}")
+            if h.get("is_feedback"):
+                # A 👍/👎 the student gave on a related past question, not a
+                # normal past turn - see qdrant_service.store_feedback_note.
+                # Formatted distinctly so the model treats it as an explicit
+                # instruction to adapt, not just background context.
+                fb_type = h.get("feedback_type") or "negative"
+                reason = (h.get("feedback_reason") or "").strip()
+                if fb_type == "negative":
+                    if reason:
+                        # A concrete, actionable reason was given - make
+                        # honoring it a hard requirement, not a suggestion to
+                        # weigh alongside everything else. A prior test found
+                        # the model reliably shifted approach on a soft nudge
+                        # but did NOT reliably fulfill the specific request
+                        # (e.g. asked for a real-world example, didn't
+                        # deliver one) - MANDATORY language closes that gap.
+                        mandatory_feedback_active = True
+                        history_lines.append(
+                            f"- MANDATORY FEEDBACK REQUIREMENT: this student DISLIKED a previous "
+                            f"explanation of \"{q}\" and said why: \"{reason}\". This is a binding "
+                            f"requirement for THIS answer, not optional context - you MUST concretely "
+                            f"address that specific complaint (e.g. if they asked for a real-world "
+                            f"example, your answer MUST contain one; if they said it was too jargon-"
+                            f"heavy, your answer MUST use simpler vocabulary throughout). Do not just "
+                            f"acknowledge the complaint - actually fix it in this response."
+                        )
+                    else:
+                        history_lines.append(
+                            f"- FEEDBACK: this student DISLIKED a previous explanation of \"{q}\" "
+                            f"(no reason given). Try a genuinely different approach/angle for this "
+                            f"related question, not the same shape."
+                        )
+                else:
+                    reason_clause = f" (reason given: \"{reason}\")" if reason else ""
+                    history_lines.append(
+                        f"- FEEDBACK: this student LIKED a previous explanation of \"{q}\"{reason_clause}. "
+                        f"A similar approach worked well for them."
+                    )
+            else:
+                summary = (h.get("answer_summary") or "")[:200]
+                history_lines.append(f"- Previously asked: \"{q}\" -> covered: {summary}")
         per_student_memory_context = "\n".join(history_lines)
     else:
         per_student_memory_context = "none - this is either the student's first question on this topic, or no related prior history was found"
@@ -579,6 +627,33 @@ def run_orchestrator_pipeline(raw_query: str, student_profile: Dict[str, Any]) -
     matched_chapter = orchestrator_output.get("matched_chapter")
     format_decision = orchestrator_output.get("format_decision", "QUICK_ANSWER")
 
+    # Schema validation (live testing found this: the LLM occasionally
+    # returns a value outside the {"QUICK_ANSWER", "VIDEO_REQUIRED"} schema
+    # from SECTION 7 - e.g. "storytelling", bleeding the style directive's
+    # own vocabulary into the format field it doesn't belong in). Downstream
+    # code (the restyle-pass gate above, chat.py's video-vs-text branch)
+    # treats format_decision as a strict enum and will silently take the
+    # QUICK_ANSWER branch's "else" path for anything unrecognized, so an
+    # invalid value must be corrected here rather than left to propagate.
+    # Fall back on whether a usable text_narration was actually produced:
+    # that's a reliable signal of which branch the model was really in, more
+    # reliable than trusting a malformed label.
+    _VALID_FORMAT_DECISIONS = {"QUICK_ANSWER", "VIDEO_REQUIRED"}
+    if format_decision not in _VALID_FORMAT_DECISIONS:
+        _raw_narration = orchestrator_output.get("text_narration")
+        _has_usable_narration = bool(
+            (isinstance(_raw_narration, str) and _raw_narration.strip())
+            or (isinstance(_raw_narration, list) and any((s or "").strip() for s in _raw_narration))
+        )
+        corrected = "QUICK_ANSWER" if _has_usable_narration else "VIDEO_REQUIRED"
+        print(
+            f"[SCHEMA VALIDATION] format_decision='{format_decision}' is not a valid value "
+            f"(expected QUICK_ANSWER/VIDEO_REQUIRED) - falling back to '{corrected}' based on "
+            f"whether text_narration was actually produced."
+        )
+        format_decision = corrected
+        orchestrator_output["format_decision"] = corrected
+
     # Validate the LLM's claimed curriculum match against real subject data
     # before trusting it - see get_valid_subjects_for_grade() docstring.
     if is_authorized and classification == "CURRICULUM":
@@ -704,6 +779,28 @@ def run_orchestrator_pipeline(raw_query: str, student_profile: Dict[str, Any]) -
             # report must reflect the actual Qdrant result.
             rag_chunks = []
 
+        # Grounding-quality gate (live testing found this: a Class 10 Social
+        # Studies "fundamental rights" question resolved matched_chapter to
+        # "Resources and Development" - a Geography chapter - because that
+        # was simply the closest of a bad set of options; the actual top RAG
+        # score was ~0.015, i.e. noise, meaning the book has no real content
+        # on the topic at all. The existing chapter-filtered-search retry
+        # above already handles a WRONG chapter guess by re-searching the
+        # whole book; this handles the book having NO real answer anywhere -
+        # matched_chapter (used to label the History page entry) must not
+        # claim a specific chapter when there's nothing there to back it.
+        # Threshold is deliberately far below the 0.55 retry trigger so this
+        # only catches genuine noise, not merely a weak-but-real match.
+        top_rag_score = max((c["score"] for c in rag_chunks), default=0.0)
+        if matched_chapter and top_rag_score < 0.05:
+            print(
+                f"[CURRICULUM VALIDATION] matched_chapter '{matched_chapter}' has no real "
+                f"grounding (top RAG score {top_rag_score:.4f}) - clearing it so History/"
+                f"Firestore don't mislabel this turn under a chapter it doesn't belong to."
+            )
+            matched_chapter = None
+            orchestrator_output["matched_chapter"] = None
+
     # Restyle pass (personalized_learning.md - real bug found via live log
     # analysis against class10_personalization_test_guide.md): asking the
     # single main orchestrator call to simultaneously handle safety,
@@ -721,10 +818,17 @@ def run_orchestrator_pipeline(raw_query: str, student_profile: Dict[str, Any]) -
     # "direct" student who explicitly asks for "detailed step-by-step points"
     # gets detailed for this turn only.
     _response_style_for_restyle = detect_inline_style_override(raw_query) or (student_profile or {}).get("response_style")
+    if mandatory_feedback_active:
+        print(
+            "[RESTYLE] Skipped - a MANDATORY FEEDBACK REQUIREMENT is active for this turn; "
+            "forcing the stored/default style back on would undo the correction the main "
+            "orchestrator call was just told to honor."
+        )
     if (
         format_decision == "QUICK_ANSWER"
         and orchestrator_output.get("text_narration")
         and _response_style_for_restyle in ("storytelling", "detailed")
+        and not mandatory_feedback_active
     ):
         try:
             restyled = restyle_text_narration(

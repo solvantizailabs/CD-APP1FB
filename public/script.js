@@ -693,6 +693,16 @@ function setupChatSubmitGlobal() {
             is_clicked_followup: isClickedFollowup.toString()
         });
         if (_sessionId) params.append('session_id', _sessionId);
+        // Passed through so the backend can persist a saved-audio copy of
+        // text answers using the SAME voice the student is actually hearing
+        // live (see analytics_service.log_query's audio synthesis step) -
+        // without this, a persisted replay voice could differ from the live
+        // one and every save would be a guaranteed cache miss.
+        if (window.ttsManager) {
+            params.append('tts_model', window.ttsManager.model || 'sarvam');
+            params.append('tts_speaker', window.ttsManager.voice || 'ritu');
+            params.append('tts_language', window.ttsManager.language || 'en-IN');
+        }
 
         // Attach auth token — use pre-cached token for instant attach (no race timeout)
         try {
@@ -904,10 +914,41 @@ function setupChatSubmitGlobal() {
                 contentDiv.innerHTML = '<span style="color:#ff6b6b">Connection error. Please try again.</span>';
             }
         };
+    };
 
-        function mountVideoLessonGlobal(turnId, data) {
+    // Sibling of submitSmartQuery (not nested inside it) so it is registered
+    // once when setupChatSubmitGlobal() runs at page load, and so both a live
+    // SSE turn and a replayed history turn (injectReplayedTurn, below) can
+    // call it - a version nested inside submitSmartQuery would not exist
+    // until submitSmartQuery had been called at least once.
+    function mountVideoLessonGlobal(turnId, data) {
+            const chatHistory = document.getElementById('chat-history') || document.getElementById('chat-container');
             const mount = document.getElementById(`video-mount-${turnId}`);
-            if (mount && data.interactive_url) {
+            if (!mount || !data.interactive_url) return;
+
+            // The lesson file may no longer exist on disk (e.g. an old video
+            // that was never persisted anywhere durable) - mounting an iframe
+            // straight to a 404/500 shows the raw server error page inside
+            // the player instead of anything useful. Check first so we can
+            // show a plain-language fallback and leave the text answer
+            // visible instead.
+            // redirect: 'manual' instead of the default 'follow' - the backend
+            // redirects to a cross-origin Supabase backup when the local file
+            // is missing, and a followed cross-origin response can't be read
+            // by fetch (CORS blocks it) even though a real iframe navigation
+            // to that same URL is unaffected. An unreadable opaqueredirect
+            // response means "the backend found it somewhere, trust it," not
+            // "it failed."
+            fetch(data.interactive_url, { method: 'HEAD', redirect: 'manual' })
+                .then((res) => {
+                    if (!res.ok && res.type !== 'opaqueredirect') throw new Error(`status ${res.status}`);
+                    mountVideoIframe();
+                })
+                .catch(() => {
+                    mount.innerHTML = `<div style="padding: 24px; text-align: center; color: #94a3b8; font-size: 13px;">This video lesson isn't available right now. The text answer above is still there.</div>`;
+                });
+
+            function mountVideoIframe() {
                 const playerId = `hf-player-${turnId}`;
                 const iframeId  = `hf-iframe-${turnId}`;
                 const progId    = `hf-prog-${turnId}`;
@@ -1076,7 +1117,80 @@ function setupChatSubmitGlobal() {
                 console.log('[submitSmartQuery] Hyperframes player mounted:', data.interactive_url);
             }
         }
-    };
+
+    // Renders an already-completed history item as if it were just asked,
+    // reusing the same turn skeleton and mountVideoLessonGlobal as a live
+    // SSE turn, but skipping EventSource entirely since there is nothing
+    // to stream - the answer already exists. Shares _turnCount/_sessionId
+    // with submitSmartQuery (both siblings inside setupChatSubmitGlobal) so
+    // a follow-up right after this replay is sent with the session the
+    // backend just set up for it.
+    window.injectReplayedTurn = function(data) {
+            const chatHistory = document.getElementById('chat-history') || document.getElementById('chat-container');
+            if (!chatHistory) {
+                console.error('[injectReplayedTurn] No chat container found');
+                return;
+            }
+            if (_isFirstQuery) {
+                chatHistory.innerHTML = '';
+                _isFirstQuery = false;
+            }
+            if (data.session_id) _sessionId = data.session_id;
+
+            const userRow = document.createElement('div');
+            userRow.className = 'chat-bubble-row chat-bubble-row--user';
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            userRow.innerHTML = `<div class="user-bubble-card"><div>${data.query || ''}</div><div class="user-bubble-meta">${timeStr}</div></div>`;
+            chatHistory.appendChild(userRow);
+
+            if (window.playbackController) window.playbackController.stopAll();
+            document.querySelectorAll('iframe[id^="hf-iframe-"]').forEach(iframe => hfCmd(iframe.id, 'PAUSE'));
+
+            const currentTurn = _turnCount++;
+            const aiRow = document.createElement('div');
+            aiRow.className = 'chat-bubble-row chat-bubble-row--ai fade-in';
+            aiRow.innerHTML = `
+                <div class="ai-response-card" id="ai-card-global-${currentTurn}">
+                    <div class="ai-card-top">
+                        <span class="ai-card-title">CHADUVU GURU ASSISTANT</span>
+                        <span class="intent-badge-pill" id="intent-badge-${currentTurn}"></span>
+                    </div>
+                    <div class="ai-text-content" id="ai-content-${currentTurn}"></div>
+                    <div id="video-mount-${currentTurn}"></div>
+                </div>`;
+            chatHistory.appendChild(aiRow);
+
+            const contentDiv = document.getElementById(`ai-content-${currentTurn}`);
+            if (contentDiv) {
+                contentDiv.innerHTML = (typeof marked !== 'undefined') ? marked.parse(data.llm_response || '') : (data.llm_response || '');
+            }
+
+            if (data.video_url) {
+                mountVideoLessonGlobal(currentTurn, { interactive_url: data.video_url });
+            } else if (data.audio_url) {
+                // Text-only replay with saved narration audio (see
+                // tts_service.synthesize_and_persist_answer_audio) - plays
+                // the audio that was actually saved at answer time, not a
+                // fresh (billed) TTS call.
+                const card = document.getElementById(`ai-card-global-${currentTurn}`);
+                if (card) {
+                    const playBtn = document.createElement('button');
+                    playBtn.className = 'hf-overlay-btn';
+                    playBtn.style.cssText = 'margin-top: 8px; background: rgba(20,184,166,0.12); border: 1px solid rgba(20,184,166,0.45); color: #14b8a6; padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;';
+                    playBtn.textContent = '🔊 Play answer';
+                    const audioEl = new Audio(data.audio_url);
+                    playBtn.onclick = () => {
+                        if (audioEl.paused) { audioEl.play(); playBtn.textContent = '⏸ Pause'; }
+                        else { audioEl.pause(); playBtn.textContent = '🔊 Play answer'; }
+                    };
+                    audioEl.onended = () => { playBtn.textContent = '🔊 Play answer'; };
+                    card.appendChild(playBtn);
+                }
+            }
+
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        };
 
     console.log('[setupChatSubmitGlobal] window.submitSmartQuery registered successfully.');
 }
@@ -1522,10 +1636,11 @@ function closeFeedbackOverlay(shouldSubmit) {
 /** POST feedback to the backend API */
 async function _saveFeedbackToServer(queryId, type, text) {
     try {
+        const uid = (window.currentUser && window.currentUser.uid) || null;
         await fetch('/api/feedback', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query_id: queryId, feedback_type: type, feedback_text: text })
+            body: JSON.stringify({ query_id: queryId, feedback_type: type, feedback_text: text, uid })
         });
         console.log(`[Feedback] Saved '${type}' for query ${queryId}`);
     } catch(e) {

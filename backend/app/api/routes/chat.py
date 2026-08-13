@@ -74,6 +74,7 @@ class FeedbackRequest(BaseModel):
     query_id: str
     feedback_type: str            # "like" or "dislike"
     feedback_text: Optional[str] = None
+    uid: Optional[str] = None
 
 
 def track_cumulative_analytics(uid: str, query: str, subject: str, chapter_name: str = "Unknown"):
@@ -420,7 +421,10 @@ async def smart_query_engine(
     class_name: str = Query(...),
     subject: str = Query(...),
     session_id: str = Query(None),
-    is_clicked_followup: bool = Query(False)
+    is_clicked_followup: bool = Query(False),
+    tts_model: str = Query("sarvam"),
+    tts_speaker: str = Query("ritu"),
+    tts_language: str = Query("en-IN")
 ):
     """
     Smart query endpoint with conversational context, using an action-based routing model.
@@ -652,6 +656,19 @@ async def smart_query_engine(
                 # Log query to Firestore user_queries collection
                 _query_doc_id = None
                 try:
+                    # See the matching comment on the fresh-generation path
+                    # below for why this exists: text answers otherwise never
+                    # get their audio persisted anywhere.
+                    answer_audio_url = None
+                    if not interactive_url and text_script and tts_model == "sarvam":
+                        from backend.app.services.chat.tts_service import synthesize_and_persist_answer_audio
+                        answer_audio_url = await synthesize_and_persist_answer_audio(
+                            text=text_script,
+                            storage_key=f"{uid}_{int(time.time() * 1000)}",
+                            language=tts_language,
+                            speaker=tts_speaker,
+                        )
+
                     from backend.app.services.analytics import analytics_service
                     _query_doc_id = analytics_service.log_query(
                         uid=uid,
@@ -669,7 +686,7 @@ async def smart_query_engine(
                         retrieved_sources=None,  # Cache hits don't execute a fresh search
                         storyboard_data={"scenes": cached_video_scenes} if cached_video_scenes else None,
                         video_url=interactive_url,
-                        audio_url=None
+                        audio_url=answer_audio_url
                     )
 
                     # Rebuild/update user analytics (streaks, counts, etc.)
@@ -1061,6 +1078,23 @@ async def smart_query_engine(
                             "page_number": chunk.get("page_number") or 1
                         })
 
+                # Text-only answers (video answers already have real saved
+                # narration per-scene, see storyboard_data) never had their
+                # audio persisted anywhere - replaying one from history would
+                # otherwise mean either silence or a fresh billed TTS call
+                # every single time it's revisited. Only "sarvam" has a
+                # caching layer to make this cheap; Azure/browser voices have
+                # nothing persistable to save (see synthesize_and_persist_answer_audio).
+                answer_audio_url = None
+                if not interactive_url and text_script and tts_model == "sarvam":
+                    from backend.app.services.chat.tts_service import synthesize_and_persist_answer_audio
+                    answer_audio_url = await synthesize_and_persist_answer_audio(
+                        text=text_script,
+                        storage_key=f"{uid}_{int(time.time() * 1000)}",
+                        language=tts_language,
+                        speaker=tts_speaker,
+                    )
+
                 from backend.app.services.analytics import analytics_service
                 _query_doc_id = analytics_service.log_query(
                     uid=uid,
@@ -1078,7 +1112,7 @@ async def smart_query_engine(
                     retrieved_sources=retrieved_sources,
                     storyboard_data=updated_lesson_package,
                     video_url=interactive_url,
-                    audio_url=None
+                    audio_url=answer_audio_url
                 )
 
                 # Rebuild/update user analytics (streaks, counts, etc.)
@@ -1244,16 +1278,25 @@ async def submit_feedback(request: FeedbackRequest):
     """
     try:
         from google.cloud import firestore as _fs
-        from google.cloud.firestore_v1.field_path import FieldPath
-        # Use collection group to find the document by query_id without needing uid
-        queries_group = db.collection_group("queries")
-        docs = list(queries_group.where(FieldPath.document_id(), "==", request.query_id).limit(1).stream())
-        
-        if not docs:
-            logger.error(f"[FEEDBACK] Query document {request.query_id} not found across nested queries.")
+
+        if not request.uid:
+            # The old approach here used a Firestore collection-group query
+            # filtered by FieldPath.document_id() == a bare string - that's
+            # exactly what "__key__ filter value must be a Key" means:
+            # Firestore requires a full document reference for that filter on
+            # a collection-group query, not a plain ID. The fix is to just
+            # look the document up directly (needs uid), not to scan every
+            # user's query history for a matching ID (expensive AND still
+            # avoidable now that every caller already knows its own uid).
+            logger.error(f"[FEEDBACK] Request for query {request.query_id} missing uid - cannot locate document.")
+            raise HTTPException(status_code=400, detail="uid is required to save feedback.")
+
+        doc_ref = db.collection("users").document(request.uid).collection("queries").document(request.query_id)
+        query_snapshot = doc_ref.get()
+        if not query_snapshot.exists:
+            logger.error(f"[FEEDBACK] Query document {request.query_id} not found for uid={request.uid}.")
             raise HTTPException(status_code=404, detail="Query document not found.")
-            
-        doc_ref = docs[0].reference
+        query_data = query_snapshot.to_dict() or {}
         doc_ref.update({
             "feedback": {
                 "type": request.feedback_type,
@@ -1273,6 +1316,25 @@ async def submit_feedback(request: FeedbackRequest):
             profile_service.compute_quadrant(feedback_uid)
         except Exception as fb_signal_err:
             logger.error(f"[FEEDBACK] Failed to update personalization signals: {fb_signal_err}")
+
+        # Beyond the aggregate quadrant signal above, remember WHAT was liked/
+        # disliked so a future related question can actually adapt, not just
+        # shift tone - see qdrant_service.store_feedback_note. This is a
+        # topic-relevant memory point, not a blind counter: it resurfaces via
+        # the same semantic search that already powers per_student_history
+        # whenever this student asks something related later.
+        try:
+            qdrant.store_feedback_note(
+                uid=request.uid,
+                question=query_data.get("query") or "",
+                class_name=query_data.get("class"),
+                subject=query_data.get("subject"),
+                topic=query_data.get("chapter_name"),
+                is_positive=(request.feedback_type == "like"),
+                reason=request.feedback_text or "",
+            )
+        except Exception as fb_note_err:
+            logger.error(f"[FEEDBACK] Failed to store feedback memory note: {fb_note_err}")
 
         return {"status": "ok"}
     except HTTPException:

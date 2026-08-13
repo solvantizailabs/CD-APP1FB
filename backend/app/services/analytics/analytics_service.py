@@ -16,6 +16,27 @@ def same_local_day(ts_old, ts_new, timezone_str="Asia/Kolkata"):
     tz = pytz.timezone(timezone_str)
     return ts_old.astimezone(tz).date() == ts_new.astimezone(tz).date()
 
+
+def _sanitize_for_firestore(value):
+    """
+    Firestore rejects an array that directly contains another array (arrays
+    of dicts/scalars are fine; dicts containing arrays are fine) - confirmed
+    root cause of a real data-loss bug where an entire query doc failed to
+    save because one video scene's template_data had a "connections" field
+    shaped like [[0,1],[1,2]] (coordinate pairs for a diagram template).
+    Recursively rewrites any such nested list into a list of {"_list": [...]}
+    wrapper dicts so the write never fails on this, for this template or any
+    future one with the same shape.
+    """
+    if isinstance(value, list):
+        return [
+            {"_list": _sanitize_for_firestore(item)} if isinstance(item, list) else _sanitize_for_firestore(item)
+            for item in value
+        ]
+    elif isinstance(value, dict):
+        return {k: _sanitize_for_firestore(v) for k, v in value.items()}
+    return value
+
 # ============================================
 # PHASE 1: FIRESTORE COLLECTION SCHEMAS
 # ============================================
@@ -84,15 +105,26 @@ def log_query(
         except (ValueError, AttributeError):
             logger.warning(f"Could not parse class: {class_name}, defaulting to 0")
 
-        # Ensure subject is a string
+        # Ensure subject is a string. "all" is the frontend's generic
+        # chat-mode filter value, not a real classification - try to resolve
+        # a real subject from the chapter registry / keyword heuristic before
+        # saving, so this query doesn't need read-time guessing later (see
+        # backend/app/core/subject_classifier.py for how history.py handles
+        # the queries that were already saved this way before this existed).
         safe_subject = subject.lower().strip() if isinstance(subject, str) else "unknown"
+        if safe_subject in ("all", "unknown", ""):
+            try:
+                from backend.app.core.subject_classifier import resolve_subject
+                safe_subject = resolve_subject(class_name, chapter_name, query, safe_subject)
+            except Exception as classify_err:
+                logger.warning(f"Subject resolution fallback failed, keeping '{safe_subject}': {classify_err}")
         
         # Generate chronological and readable document ID
         timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         doc_id = f"{timestamp_str}_class{class_int}"
         
         doc_ref = db.collection("users").document(uid).collection("queries").document(doc_id)
-        
+
         query_data = {
             "query": query,
             "reformulated_query": reformulated_query,
@@ -106,21 +138,37 @@ def log_query(
             "timestamp": firestore.SERVER_TIMESTAMP,
             "answer_length": answer_length,
             "retrieved_sources": retrieved_sources or [],
-            "storyboard_data": storyboard_data,
+            "storyboard_data": _sanitize_for_firestore(storyboard_data) if storyboard_data else storyboard_data,
             "video_url": video_url,
             "audio_url": audio_url
         }
-        
+
         if ai_difficulty_score is not None:
             query_data["ai_difficulty_score"] = ai_difficulty_score
-            
+
         if query_json_url:
             query_data["query_json_url"] = query_json_url
-        
-        doc_ref.set(query_data)
+
+        try:
+            doc_ref.set(query_data)
+        except Exception as write_err:
+            # The sanitizer above handles the known failure mode (nested
+            # arrays inside a scene's template_data - see
+            # _sanitize_for_firestore). This is a last-resort safety net for
+            # anything else Firestore might reject about storyboard_data in
+            # the future: retry WITHOUT it rather than silently losing the
+            # entire question. A missing storyboard_data means "the video's
+            # own scene metadata isn't in this doc" (video_url/audio_url are
+            # untouched, so playback and replay are unaffected) - it does not
+            # mean the question was never asked or answered.
+            logger.error(f"❌ Firestore write failed with storyboard_data included, retrying without it: {write_err}")
+            query_data["storyboard_data"] = None
+            doc_ref.set(query_data)
+            logger.warning(f"⚠️ Query logged WITHOUT storyboard_data (see error above): {doc_ref.id}")
+
         logger.info(f"✅ Query logged to user queries subcollection: {doc_ref.id}")
         return doc_ref.id
-        
+
     except Exception as e:
         logger.error(f"❌ Failed to log query: {e}")
         raise

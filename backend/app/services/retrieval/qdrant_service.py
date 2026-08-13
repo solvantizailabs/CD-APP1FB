@@ -764,6 +764,12 @@ def retrieve_student_history(uid: str, query: str, limit: int = 3) -> List[Dict]
     (SS6.4) - the direct fix for the "blunder answer on follow-up" bug
     (personalized_learning.md SS2.4). Empty list on a genuinely new topic,
     on the student's first-ever question, or on any retrieval error.
+
+    Also surfaces feedback notes (see store_feedback_note) the same way,
+    since they're upserted into this same collection embedded on the
+    original question's text - a student's past "I didn't like this
+    explanation" on a related topic shows up here alongside normal past
+    turns, not as a separate lookup.
     """
     if client is None or local_embedder is None or not uid or uid == "anonymous":
         return []
@@ -787,12 +793,54 @@ def retrieve_student_history(uid: str, query: str, limit: int = 3) -> List[Dict]
                 "topic": h.payload.get("topic"),
                 "score": h.score,
                 "timestamp": h.payload.get("timestamp"),
+                "is_feedback": h.payload.get("is_feedback", False),
+                "feedback_type": h.payload.get("feedback_type"),
+                "feedback_reason": h.payload.get("feedback_reason"),
             }
             for h in hits
         ]
     except Exception as e:
         print(f"[StudentHistory] Failed to retrieve history for uid={uid}: {e}")
         return []
+
+
+def store_feedback_note(uid: str, question: str, class_name, subject: str,
+                         topic: str, is_positive: bool, reason: str = "") -> None:
+    """
+    Records a 👍/👎 as its own searchable memory point in the SAME collection
+    retrieve_student_history searches - embedded on the ORIGINAL question's
+    text, so it resurfaces automatically (via normal semantic similarity)
+    whenever this student asks something related later, without needing to
+    know in advance what the next question's topic will be.
+    """
+    if client is None or local_embedder is None or not uid or uid == "anonymous" or not question:
+        return
+    try:
+        _ensure_collection(STUDENT_HISTORY_COLLECTION)
+        vector = _encode(question)
+        point_id = str(uuid.uuid4())
+        client.upsert(
+            collection_name=STUDENT_HISTORY_COLLECTION,
+            points=[models.PointStruct(
+                id=point_id,
+                vector=vector,
+                payload={
+                    "uid": uid,
+                    "question": question,
+                    "reformulated_question": question,
+                    "answer_summary": "",
+                    "class_name": str(class_name),
+                    "subject": str(subject or "").lower(),
+                    "topic": topic or "",
+                    "timestamp": datetime.datetime.utcnow().isoformat(),
+                    "is_feedback": True,
+                    "feedback_type": "positive" if is_positive else "negative",
+                    "feedback_reason": reason or "",
+                },
+            )],
+        )
+    except Exception as e:
+        print(f"[StudentHistory] Failed to store feedback note for uid={uid}: {e}")
 
 
 def index_global_cache_entry(doc_id: str, raw_query: str, class_name: str, subject: str) -> None:
