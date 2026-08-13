@@ -34,7 +34,7 @@ load_dotenv(dotenv_path=env_path, override=True)
 
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.services.retrieval import qdrant_service as qdrant
@@ -127,6 +127,18 @@ async def serve_upload_file(file_path: str):
     # lesson file is ALSO backed up to Supabase at generation time (see
     # hyperframes_engine_bridge.py's upload_file_to_supabase calls), so fall
     # back to that durable copy instead of 404ing when the local one is gone.
+    #
+    # This MUST be a server-side fetch-and-serve, not a redirect to the
+    # Supabase URL directly - real incident: every video generated before a
+    # Render restart went black/frozen because Supabase Storage serves public
+    # objects with `Content-Security-Policy: default-src 'none'; sandbox`
+    # (its own hard security default for publicly-hosted HTML, not something
+    # we set), which blocks every script the interactive lesson page needs to
+    # run. Fetching it ourselves and re-serving it as our own response with
+    # our own headers avoids that CSP entirely, since the browser only ever
+    # sees this content as coming from our domain. Also don't trust
+    # Supabase's own returned Content-Type for this - it serves .html as
+    # text/plain, which stops the browser treating it as a document at all.
     if file_path.startswith(VISUAL_LESSONS_PREFIX):
         from backend.app.core.supabase_storage import get_supabase_config, BUCKET_NAME
         supabase_path = file_path[len(VISUAL_LESSONS_PREFIX):]
@@ -134,14 +146,31 @@ async def serve_upload_file(file_path: str):
         cloud_url = f"{supabase_url}/storage/v1/object/public/{BUCKET_NAME}/{supabase_path}"
         try:
             import httpx
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                head_resp = await client.head(cloud_url)
-            if head_resp.status_code == 200:
-                return RedirectResponse(url=cloud_url)
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                cloud_resp = await client.get(cloud_url)
+            if cloud_resp.status_code == 200:
+                return Response(content=cloud_resp.content, media_type=_guess_content_type(file_path))
         except Exception as e:
-            print(f"[Uploads] Supabase fallback check failed for {file_path}: {e}")
+            print(f"[Uploads] Supabase fallback fetch failed for {file_path}: {e}")
 
     raise HTTPException(status_code=404, detail="File not found")
+
+
+def _guess_content_type(file_path: str) -> str:
+    """Content-Type by extension - mirrors supabase_storage.py's upload-time
+    mapping. Deliberately not trusted from Supabase's own response (see
+    serve_upload_file's docstring above) since it serves .html as text/plain."""
+    ext_map = {
+        ".html": "text/html", ".js": "application/javascript",
+        ".css": "text/css", ".json": "application/json",
+        ".wav": "audio/wav", ".mp3": "audio/mpeg",
+        ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".svg": "image/svg+xml", ".webp": "image/webp",
+    }
+    for ext, content_type in ext_map.items():
+        if file_path.endswith(ext):
+            return content_type
+    return "application/octet-stream"
 
 # --- HTML TEMPLATE ROUTING ---
 @app.api_route("/", methods=["GET", "HEAD"])

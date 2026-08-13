@@ -43,11 +43,50 @@ if not firebase_admin._apps:
     else:
         print("[Firebase Warning] serviceAccountKey.json not found on disk & FIREBASE_SERVICE_ACCOUNT_JSON not set. Firebase Admin SDK skipped.")
 
-try:
-    db = firestore.client() if firebase_admin._apps else None
-except Exception as e:
-    print(f"[Firebase Warning] Could not initialize Firestore client: {e}")
-    db = None
+class _LazyFirestoreClient:
+    """
+    Proxies every attribute access to a real firestore.Client, created on
+    first successful use rather than once at import time.
+
+    Real incident: `db = firestore.client()` used to run exactly once, at
+    process startup. A transient failure right then (e.g. a brief network
+    hiccup during a Render cold start) left `db` permanently None for that
+    worker's entire lifetime - every request from then on 500'd with
+    "'NoneType' object has no attribute 'collection'" until someone
+    manually restarted the service. This retries on every access instead,
+    so a one-off startup blip self-heals on the very next request instead
+    of requiring a restart. No caller does `if db:`/`is None` truthiness
+    checks on this (confirmed repo-wide), so swapping the plain value for
+    an always-truthy proxy object is safe.
+    """
+    def __getattr__(self, name):
+        client = _get_or_init_firestore_client()
+        if client is None:
+            raise RuntimeError(
+                "Firestore client is unavailable - Firebase Admin failed to "
+                "initialize. Check startup logs for the [Firebase Warning] line."
+            )
+        return getattr(client, name)
+
+
+_firestore_client = None
+
+
+def _get_or_init_firestore_client():
+    global _firestore_client
+    if _firestore_client is not None:
+        return _firestore_client
+    if not firebase_admin._apps:
+        return None
+    try:
+        _firestore_client = firestore.client()
+    except Exception as e:
+        print(f"[Firebase Warning] Could not initialize Firestore client (will retry on next access): {e}")
+        return None
+    return _firestore_client
+
+
+db = _LazyFirestoreClient()
 
 # Google Cloud Storage / Firebase Storage
 GCS_BUCKET = os.getenv("GCS_BUCKET_NAME") or os.getenv("FIREBASE_STORAGE_BUCKET") or "chaduvu-guru.firebasestorage.app"
