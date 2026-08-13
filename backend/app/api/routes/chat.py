@@ -548,6 +548,24 @@ async def smart_query_engine(
             student_profile["tough_subjects"] = profile_ctx.get("tough_subjects", [])
             student_profile["easy_subjects"] = profile_ctx.get("easy_subjects", [])
 
+            # Immediate (this-conversation) context, distinct from the
+            # semantic long-term memory above - per_student_history only
+            # surfaces when the CURRENT query has topic words of its own to
+            # search with, so a content-free follow-up ("can you rethink
+            # your answer and confirm?") had nothing to resolve against even
+            # one turn later. session_manager already stores every turn's
+            # raw query/answer in Redis for this exact session
+            # (active_context_window) - just never read back into the
+            # prompt before. Truncated to keep prompt growth marginal, same
+            # pattern per_student_history's summaries already use.
+            recent_window = session_manager.get_window(session["session_id"])
+            if recent_window:
+                last_turn = recent_window[-1]
+                student_profile["immediate_prior_turn"] = {
+                    "query": last_turn.get("query"),
+                    "answer": (last_turn.get("answer") or "")[:250],
+                }
+
             # SS6.3 fix: a basic-phrased question only continues the repeat
             # streak if it's actually ABOUT the same topic as the question
             # that started the streak - not just "also short/simple". Compare

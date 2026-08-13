@@ -465,11 +465,28 @@ def run_orchestrator_pipeline(raw_query: str, student_profile: Dict[str, Any]) -
         subject_notes.append(f"finds these subjects easy: {', '.join(easy_subjects)}")
     tough_easy_subjects_note = "; ".join(subject_notes) if subject_notes else "not set"
 
+    # Distinct from per_student_memory_context above (long-term, semantic-
+    # search-based, across sessions): this is the literal last exchange in
+    # THIS live conversation, straight from Redis session state - lets the
+    # model resolve content-free follow-ups ("can you rethink that and
+    # confirm?", "explain again") that have no topic words of their own for
+    # semantic search to match against. Empty on the first turn of a topic,
+    # same "none" fallback style as per_student_memory_context.
+    immediate_prior_turn = student_profile.get("immediate_prior_turn")
+    if immediate_prior_turn and immediate_prior_turn.get("query"):
+        immediate_conversation_context = (
+            f"Student just asked: \"{immediate_prior_turn['query']}\"\n"
+            f"You just answered: \"{immediate_prior_turn.get('answer') or ''}\""
+        )
+    else:
+        immediate_conversation_context = "none - this is the first turn on this topic in this conversation"
+
     formatted_prompt = formatted_prompt.replace("{student_response_style}", response_style)
     formatted_prompt = formatted_prompt.replace("{student_quadrant}", quadrant)
     formatted_prompt = formatted_prompt.replace("{escalation_instruction}", escalation_instruction)
     formatted_prompt = formatted_prompt.replace("{per_student_memory_context}", per_student_memory_context)
     formatted_prompt = formatted_prompt.replace("{tough_easy_subjects_note}", tough_easy_subjects_note)
+    formatted_prompt = formatted_prompt.replace("{immediate_conversation_context}", immediate_conversation_context)
 
     # Step 3: Run Orchestrator LLM (Single Pass)
     print(f"\n[ORCHESTRATOR LLM] Executing single-pass evaluation for Class {grade} query...")
