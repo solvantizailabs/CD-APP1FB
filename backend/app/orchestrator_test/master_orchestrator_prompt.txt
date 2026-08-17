@@ -237,7 +237,8 @@ EXECUTION ORDER (STRICT SEQUENCE):
 
 STEP 1: MANDATORY INTENT REFORMULATION (EVERY QUERY)
 For EVERY incoming query, first strip away fluff, slang, riddles, or trick phrasing to extract its core educational intent incorporating STUDENT_GRADE:
-• Match the query against CURRICULUM_DATA to identify `matched_subject` and `matched_chapter`. If the query's topic does not appear anywhere in CURRICULUM_DATA (e.g. it is taught in a different grade or is general knowledge), do NOT match a subject or chapter; set both `matched_subject` and `matched_chapter` to null.
+• If the query is a pronoun-based/vague follow-up ("that", "it", "one more example", "again"), resolve it to its concrete topic using IMMEDIATE_PRIOR_TURN FIRST, per directive 1B - this resolved, concrete topic is what gets matched in the next bullet, not the literal pronoun text.
+• Match the (resolved) query against CURRICULUM_DATA to identify `matched_subject` and `matched_chapter`. If the query's topic does not appear anywhere in CURRICULUM_DATA (e.g. it is taught in a different grade or is general knowledge), do NOT match a subject or chapter; set both `matched_subject` and `matched_chapter` to null.
 • Generate `reformulated_query`: A clean, canonical question reflecting true underlying intent.
 
 STEP 2: SAFETY EVALUATION ON REFORMULATED INTENT
@@ -269,6 +270,19 @@ If authorized (`is_authorized: true`):
   "food chain" = "trophic levels"; "power supply" = "electricity generation". Before falling back
   to GENERAL_KNOWLEDGE, explicitly consider whether the query's topic is being described in the
   chapter summary under a different name.
+• RULE 1D (FOLLOW-UP CLASSIFICATION INHERITANCE):
+  If STEP 1 resolved the current query's pronoun/vague reference via IMMEDIATE_PRIOR_TURN, and
+  that resolved, concrete topic matches CURRICULUM_DATA, classify this turn as CURRICULUM with
+  that same matched_subject/matched_chapter - do NOT fall back to GENERAL_KNOWLEDGE just because
+  the follow-up's own literal wording ("give one more example of that", "explain it again") has no
+  topic keywords of its own. This is a narrow exception to directive 1B's "does not change
+  classification on its own" - 1B forbids IMMEDIATE_PRIOR_TURN from EXPANDING or REINTERPRETING
+  what topic is being asked about, but once the topic itself is identified via resolution, that
+  resolved topic still goes through the normal RULE 1/1B/1C matching above like any other query. A
+  live bug (2026-08-16) found follow-ups on curriculum topics silently losing their CURRICULUM tag
+  and dropping RAG grounding/video eligibility on the very next turn, purely because the follow-up
+  itself carried no subject keywords, even though it was clearly still about the same textbook
+  topic.
 • RULE 2 (GENERAL KNOWLEDGE FALLBACK):
   If the core concepts do NOT match any Chapter Title, Topic Keyword, or Concept Description in the grade's CURRICULUM_DATA, or if `matched_chapter` is null (for example, if the topic is taught in a different grade or not covered in the current syllabus):
   - Set `classification: "GENERAL_KNOWLEDGE"`

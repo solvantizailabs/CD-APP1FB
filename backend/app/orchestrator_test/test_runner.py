@@ -493,6 +493,7 @@ def run_orchestrator_pipeline(raw_query: str, student_profile: Dict[str, Any]) -
     user_prompt = f"USER RAW QUERY: \"{raw_query}\""
 
     MODEL = os.environ.get("OPENAI_MODEL", OPENAI_MODEL)
+    current_year = datetime.datetime.now().year
 
     # Step 1/3 â€” Query classification (keyword-based, instant, free)
     # If query is GK/current events, we perform live Google Search grounding to answer.
@@ -515,11 +516,86 @@ def run_orchestrator_pipeline(raw_query: str, student_profile: Dict[str, Any]) -
     query_type = "GK_KNOWLEDGE" if is_gk_query else "CURRICULUM"
     print(f"[ORCHESTRATOR] Step 1/3 â€” Query type: {query_type} (keyword match, 0ms)")
 
-    # Enable Google Search grounding dynamically for GK/live queries
-    config = {"temperature": 0.2}
+    # Enable web search grounding dynamically for GK/live queries only -
+    # everything else (including non-live GENERAL_KNOWLEDGE questions, e.g. a
+    # class 7 student asking about class 10 content) keeps the existing fast,
+    # non-search path and storytelling/video flow untouched.
+    #
+    # Search-grounded queries deliberately use a small, dedicated prompt
+    # instead of the ~45k-char master orchestrator prompt (curriculum cache,
+    # JSON schema, storyboard rules, etc. - none of which apply here, since a
+    # search-grounded reply always ends up as plain QUICK_ANSWER text anyway,
+    # the citations/links the web_search tool adds routinely break the JSON
+    # schema and route through the salvage fallback below regardless). Live
+    # testing found that burying the actual question inside that huge prompt
+    # let the model's web search drift onto a different but similarly-named
+    # event (e.g. answering a Cricket World Cup question with FIFA World Cup
+    # results) - a short, focused prompt keeps the search tied to what was
+    # actually asked.
+    if is_gk_query:
+        formatted_prompt = (
+            f"You are answering a general-knowledge question for a Class {grade} "
+            f"Indian student (board: {student_profile.get('board', 'CBSE')}). "
+            f"Today's real date is {current_date_time}. Treat this as ground truth "
+            "even if it feels later than your own training data - trust the web "
+            "search results over your own sense of what's 'recent'.\n\n"
+            f"CONVERSATION SO FAR: {immediate_conversation_context}\n"
+            "Critical - if the student's question uses a pronoun or vague reference "
+            "('that match', 'there', 'he', 'it', 'the winner', etc), resolve it "
+            "using ONLY the conversation above - do not silently pick a different, "
+            "more prominent topic/event just because it's more recent or famous. "
+            "If the reference genuinely can't be resolved from the conversation "
+            "above, ask for clarification instead of guessing a different topic.\n\n"
+            "Use web search to find the current, accurate answer before replying.\n\n"
+            "Critical - preserve every specific qualifier in the student's question "
+            "exactly (sport, competition name, country/state, person, party, etc). "
+            "Do not substitute a different but similarly-named or more recently "
+            "trending event/topic - if they ask about cricket, answer about cricket, "
+            "not football, even if a football story is more prominent right now.\n\n"
+            "Critical - if the question asks about the 'last'/'latest'/'most recent' "
+            "edition of a recurring event (a World Cup, an election, an award, a "
+            "budget, etc), your search terms must include the current year AND the "
+            "word 'latest' or 'most recent' - do not search with just the event name "
+            "alone, since that tends to surface an older, more heavily-indexed edition "
+            "instead of the newest one. Explicitly check the date of whatever edition "
+            "you find: if it is not the most recent one that has already concluded as "
+            "of today's date above, search again with a more specific/recent query "
+            "before answering. State the exact date/year of the edition you're "
+            "reporting on in your answer, so it's verifiable.\n\n"
+            "Answer directly and concisely (3-6 sentences), in simple language "
+            "appropriate for this student's grade. State facts plainly - no need "
+            "for a storytelling framing here, this is a factual lookup. Answer only "
+            "the specific person/place/entity the question is actually about - do "
+            "not pad the answer with an unrelated full list (e.g. if asked for one "
+            "state's chief minister, name that one person, don't enumerate every "
+            "state's chief minister)."
+        )
+        # Merely *suggesting* the year be included wasn't reliably followed,
+        # even at temperature 0 (live testing: "who won the last FIFA World
+        # Cup" kept sometimes searching just "FIFA World Cup winner" and
+        # landing on the older, more heavily-indexed 2022 result instead of
+        # the actual 2026 one, even though the 2026 tournament had already
+        # concluded on the real web). Dictating the exact, literal search
+        # string instead of a soft hint was tested 3/3 consistent - so the
+        # search text is constructed here in code, not left to the model.
+        forced_search_text = f"{raw_query} {current_year}"
+        user_prompt = (
+            f"Your first web search tool call MUST use exactly this text as the "
+            f"query, verbatim, with no paraphrasing or shortening: "
+            f"\"{forced_search_text}\"\n\n"
+            f"If those results are inconclusive, you may search again with "
+            f"\"{raw_query} {current_year - 1}\".\n\n"
+            f"USER RAW QUERY: \"{raw_query}\""
+        )
+    # Zero temperature for search-grounded answers: this is a factual lookup,
+    # not a creative one, and non-zero sampling was observed (live testing)
+    # to make the model inconsistently pick between an older, better-indexed
+    # edition of an event and the actual most recent one across identical
+    # back-to-back calls.
+    config = {"temperature": 0.0 if is_gk_query else 0.2, "web_search": is_gk_query}
 
     # Step 2/3 â€” Main Orchestrator LLM call â€” single model: gemini-2.5-flash
-    search_note = "with Google Search Grounding (may take 15-25s)" if is_gk_query else "without Search Grounding (fast)"
+    search_note = "with OpenAI web_search Grounding (may take 15-25s)" if is_gk_query else "without Search Grounding (fast)"
     response = None
     last_error = None
     for attempt in range(1, 4):  # up to 3 retries on 503
@@ -553,6 +629,25 @@ def run_orchestrator_pipeline(raw_query: str, student_profile: Dict[str, Any]) -
             "error": str(last_error),
             "raw_user_query": raw_query,
             "status": "FAILED"
+        }
+
+    if is_gk_query:
+        return {
+            "raw_user_query": raw_query,
+            "status": "SUCCESS",
+            "resolved_book_uuid": "",
+            "orchestrator_output": {
+                "is_authorized": True,
+                "refusal_reason": None,
+                "classification": "GENERAL_KNOWLEDGE",
+                "reformulated_query": raw_query,
+                "matched_subject": "General Knowledge",
+                "matched_chapter": None,
+                "complexity_level": 1,
+                "format_decision": "QUICK_ANSWER",
+                "text_narration": response.text.strip(),
+                "video_storyboard": None,
+            },
         }
 
 

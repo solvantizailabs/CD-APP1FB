@@ -223,7 +223,7 @@
             "technology": "Python FastAPI",
             "aiEngine": "Google Gemini AI (gemini-pro, gemini-1.5-flash)",
             "vectorDatabase": "Qdrant Cloud",
-            "cache": "Redis (Memurai for Windows)",
+            "cache": " (Memurai for Windows)",
             "database": "Firebase Firestore"
         },
         "deployment": {

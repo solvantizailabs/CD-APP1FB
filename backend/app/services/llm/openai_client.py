@@ -61,6 +61,12 @@ class _Models:
             return config.get("response_mime_type")
         return getattr(config, "response_mime_type", None)
 
+    @staticmethod
+    def _web_search(config: Any) -> bool:
+        if isinstance(config, dict):
+            return bool(config.get("web_search"))
+        return bool(getattr(config, "web_search", False))
+
     def generate_content(self, model: Optional[str] = None, contents: Any = None, config: Any = None) -> TextResponse:
         # Backward compatibility for call signatures like generate_content(contents)
         if contents is None and model is not None:
@@ -70,19 +76,38 @@ class _Models:
             actual_contents = contents
             actual_model = model or OPENAI_MODEL
 
+        temperature = self._temperature(config)
+
+        # Live/current-events queries are explicitly flagged by the caller
+        # (test_runner.py's is_gk_query keyword gate) - NOT every
+        # GENERAL_KNOWLEDGE-classified question, only ones that actually need
+        # fresh, real-world facts a frozen training cutoff can't have. Routed
+        # through the Responses API's hosted web_search tool instead of a
+        # bare completion, which otherwise hallucinates plausible-sounding
+        # but wrong answers for anything after the model's training cutoff.
+        if self._web_search(config):
+            kwargs: dict[str, Any] = {
+                "model": actual_model,
+                "input": _messages(actual_contents),
+                "tools": [{"type": "web_search"}],
+            }
+            if temperature is not None:
+                kwargs["temperature"] = temperature
+            result = self._client.responses.create(**kwargs)
+            return TextResponse(getattr(result, "output_text", "") or "")
+
         kwargs: dict[str, Any] = {
             "model": actual_model,
             "messages": _messages(actual_contents),
         }
-        
-        temperature = self._temperature(config)
+
         if temperature is not None:
             kwargs["temperature"] = temperature
-            
+
         mime_type = self._response_mime_type(config)
         if mime_type == "application/json":
             kwargs["response_format"] = {"type": "json_object"}
-            
+
         result = self._client.chat.completions.create(**kwargs)
         text = result.choices[0].message.content if result.choices else ""
         return TextResponse(text or "")
