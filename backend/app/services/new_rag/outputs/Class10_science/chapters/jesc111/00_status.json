@@ -1,0 +1,108 @@
+{
+  "book_uuid": "7e71cb6f-20bc-598e-a1ba-061c7abbf36b",
+  "chapter_id": "dbfb6532-550d-408b-a1b1-001cbd6f1298",
+  "chapter_name": "11 Electricity",
+  "pdf_path": "uploads\\class-10-science\\jesc111.pdf",
+  "source_stem": "jesc111",
+  "output_dir": "C:\\Users\\home\\Desktop\\Drona-ai\\CD-APP1FB\\backend\\app\\services\\new_rag\\outputs\\Class10_science\\chapters\\jesc111",
+  "stages": {
+    "stage1_page_extraction": {
+      "is_valid": true,
+      "issues": [],
+      "page_count": 24
+    },
+    "stage2_topic_detection": {
+      "topics": [
+        {
+          "topic_name": "Electric Current and Circuit",
+          "topic_type": "topic",
+          "start_page": 171,
+          "start_anchor": "11.1 ELECTRIC CURRENT AND CIRCUIT",
+          "end_page": 173,
+          "end_anchor": "11.2 ELECTRIC POTENTIAL AND POTENTIAL DIFFERENCE"
+        },
+        {
+          "topic_name": "Electric Potential and Potential Difference",
+          "topic_type": "topic",
+          "start_page": 173,
+          "start_anchor": "11.2 ELECTRIC POTENTIAL AND POTENTIAL DIFFERENCE",
+          "end_page": 174,
+          "end_anchor": "11.3 CIRCUIT DIAGRAM"
+        },
+        {
+          "topic_name": "Circuit Diagram",
+          "topic_type": "topic",
+          "start_page": 174,
+          "start_anchor": "11.3 CIRCUIT DIAGRAM",
+          "end_page": 175,
+          "end_anchor": "11.4 OHM’S LA W"
+        },
+        {
+          "topic_name": "Ohm's Law",
+          "topic_type": "topic",
+          "start_page": 175,
+          "start_anchor": "11.4 OHM’S LA W",
+          "end_page": 177,
+          "end_anchor": "11.5 FA CTORS ON WHICH THE RESIST ANCE OF A CONDUCTOR DEPENDS"
+        },
+        {
+          "topic_name": "Factors on which the Resistance of a Conductor Depends",
+          "topic_type": "topic",
+          "start_page": 177,
+          "start_anchor": "11.5 FA CTORS ON WHICH THE RESIST ANCE OF A CONDUCTOR DEPENDS",
+          "end_page": 181,
+          "end_anchor": "11.6 RESIST ANCE OF A SYSTEM OF RESISTORS"
+        },
+        {
+          "topic_name": "Resistance of a System of Resistors",
+          "topic_type": "topic",
+          "start_page": 181,
+          "start_anchor": "11.6 RESIST ANCE OF A SYSTEM OF RESISTORS",
+          "end_page": 188,
+          "end_anchor": "11.7 HEA TING EFFECT OF ELECTRIC CURRENT"
+        },
+        {
+          "topic_name": "Heating Effect of Electric Current",
+          "topic_type": "topic",
+          "start_page": 188,
+          "start_anchor": "11.7 HEA TING EFFECT OF ELECTRIC CURRENT",
+          "end_page": 191,
+          "end_anchor": "11.8 ELECTRIC POWER"
+        },
+        {
+          "topic_name": "Electric Power",
+          "topic_type": "topic",
+          "start_page": 191,
+          "start_anchor": "11.8 ELECTRIC POWER",
+          "end_page": 193,
+          "end_anchor": "EXERCISES"
+        },
+        {
+          "topic_name": "Exercises",
+          "topic_type": "exercise",
+          "start_page": 193,
+          "start_anchor": "EXERCISES",
+          "end_page": 194,
+          "end_anchor": null
+        }
+      ],
+      "is_valid": true,
+      "issues": []
+    },
+    "chunking": {
+      "parent_count": 9,
+      "child_count": 47,
+      "diagram_count": 49,
+      "table_candidate_count": 6,
+      "oversized_parents": [
+        {
+          "topic_name": "Resistance of a System of Resistors",
+          "token_count": 3054
+        }
+      ]
+    }
+  },
+  "detected_chapter_title": "11 Electricity",
+  "status": "ingested",
+  "message": "Ingested 102 chunks (9 topics, 49 diagrams, 6 table candidates) into Qdrant collection 'textbooks_v3'."
+}

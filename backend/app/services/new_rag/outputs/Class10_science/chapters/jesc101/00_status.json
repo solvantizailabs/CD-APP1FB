@@ -1,0 +1,167 @@
+{
+  "book_uuid": "7e71cb6f-20bc-598e-a1ba-061c7abbf36b",
+  "chapter_id": "8f15903d-31ff-41e1-9051-44573efefaf7",
+  "chapter_name": "1 Chemical Reactions and Equations",
+  "pdf_path": "uploads\\class-10-science\\jesc101.pdf",
+  "source_stem": "jesc101",
+  "output_dir": "C:\\Users\\home\\Desktop\\Drona-ai\\CD-APP1FB\\backend\\app\\services\\new_rag\\outputs\\Class10_science\\chapters\\jesc101",
+  "stages": {
+    "stage1_page_extraction": {
+      "is_valid": true,
+      "issues": [],
+      "page_count": 16
+    },
+    "stage2_topic_detection": {
+      "topics": [
+        {
+          "topic_name": "Introduction to Chemical Reactions",
+          "topic_type": "topic",
+          "start_page": 1,
+          "start_anchor": "1CHAPTER",
+          "end_page": 1,
+          "end_anchor": "Activity 1.1"
+        },
+        {
+          "topic_name": "Observations of Chemical Reactions",
+          "topic_type": "activity",
+          "start_page": 1,
+          "start_anchor": "Activity 1.1",
+          "end_page": 2,
+          "end_anchor": "Activity 1.2"
+        },
+        {
+          "topic_name": "Observations from Activities",
+          "topic_type": "activity",
+          "start_page": 2,
+          "start_anchor": "Activity 1.2",
+          "end_page": 2,
+          "end_anchor": "1.1 CHEMICAL EQUATIONS"
+        },
+        {
+          "topic_name": "Chemical Equations",
+          "topic_type": "topic",
+          "start_page": 2,
+          "start_anchor": "1.1 CHEMICAL EQUATIONS",
+          "end_page": 3,
+          "end_anchor": "1.1.1 Writing a Chemical Equation"
+        },
+        {
+          "topic_name": "Writing a Chemical Equation",
+          "topic_type": "topic",
+          "start_page": 3,
+          "start_anchor": "1.1.1 Writing a Chemical Equation",
+          "end_page": 3,
+          "end_anchor": "1.1.2 Balanced Chemical Equations"
+        },
+        {
+          "topic_name": "Balanced Chemical Equations",
+          "topic_type": "topic",
+          "start_page": 3,
+          "start_anchor": "1.1.2 Balanced Chemical Equations",
+          "end_page": 6,
+          "end_anchor": "1.2 TYPES OF CHEMICAL REACTIONS"
+        },
+        {
+          "topic_name": "Types of Chemical Reactions",
+          "topic_type": "topic",
+          "start_page": 6,
+          "start_anchor": "1.2 TYPES OF CHEMICAL REACTIONS",
+          "end_page": 6,
+          "end_anchor": "1.2.1 Combination Reaction"
+        },
+        {
+          "topic_name": "Combination Reaction",
+          "topic_type": "topic",
+          "start_page": 6,
+          "start_anchor": "1.2.1 Combination Reaction",
+          "end_page": 8,
+          "end_anchor": "1.2.2 Decomposition Reaction"
+        },
+        {
+          "topic_name": "Decomposition Reaction",
+          "topic_type": "topic",
+          "start_page": 8,
+          "start_anchor": "1.2.2 Decomposition Reaction",
+          "end_page": 10,
+          "end_anchor": "1.2.3 Displacement Reaction"
+        },
+        {
+          "topic_name": "Displacement Reaction",
+          "topic_type": "topic",
+          "start_page": 10,
+          "start_anchor": "1.2.3 Displacement Reaction",
+          "end_page": 11,
+          "end_anchor": "1.2.4 Double Displacement Reaction"
+        },
+        {
+          "topic_name": "Double Displacement Reaction",
+          "topic_type": "topic",
+          "start_page": 11,
+          "start_anchor": "1.2.4 Double Displacement Reaction",
+          "end_page": 12,
+          "end_anchor": "1.2.5 Oxidation and Reduction"
+        },
+        {
+          "topic_name": "Oxidation and Reduction",
+          "topic_type": "topic",
+          "start_page": 12,
+          "start_anchor": "1.2.5 Oxidation and Reduction",
+          "end_page": 13,
+          "end_anchor": "1.3.1 Corrosion"
+        },
+        {
+          "topic_name": "Corrosion",
+          "topic_type": "topic",
+          "start_page": 13,
+          "start_anchor": "1.3.1 Corrosion",
+          "end_page": 13,
+          "end_anchor": "1.3.2 Rancidity"
+        },
+        {
+          "topic_name": "Rancidity",
+          "topic_type": "topic",
+          "start_page": 13,
+          "start_anchor": "1.3.2 Rancidity",
+          "end_page": 14,
+          "end_anchor": "What you have learnt"
+        },
+        {
+          "topic_name": "Summary of Chemical Reactions",
+          "topic_type": "summary",
+          "start_page": 14,
+          "start_anchor": "What you have learnt",
+          "end_page": 14,
+          "end_anchor": "EXERCISES"
+        },
+        {
+          "topic_name": "Exercises",
+          "topic_type": "exercise",
+          "start_page": 14,
+          "start_anchor": "EXERCISES",
+          "end_page": 16,
+          "end_anchor": "Group Activity"
+        },
+        {
+          "topic_name": "Group Activity",
+          "topic_type": "activity",
+          "start_page": 16,
+          "start_anchor": "Group Activity",
+          "end_page": 16,
+          "end_anchor": null
+        }
+      ],
+      "is_valid": true,
+      "issues": []
+    },
+    "chunking": {
+      "parent_count": 17,
+      "child_count": 35,
+      "diagram_count": 34,
+      "table_candidate_count": 2,
+      "oversized_parents": []
+    }
+  },
+  "detected_chapter_title": "1 Chemical Reactions and Equations",
+  "status": "ingested",
+  "message": "Ingested 71 chunks (17 topics, 34 diagrams, 2 table candidates) into Qdrant collection 'textbooks_v3'."
+}

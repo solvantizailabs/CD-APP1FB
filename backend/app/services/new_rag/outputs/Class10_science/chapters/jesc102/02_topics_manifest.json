@@ -1,0 +1,230 @@
+{
+  "topics": [
+    {
+      "topic_name": "Introduction",
+      "topic_type": "topic",
+      "start_page": 17,
+      "start_anchor": null,
+      "end_page": 18,
+      "end_anchor": "2.1 UNDERST ANDING THE CHEMIC AL PROPERTIES OF ACIDS AND BASES"
+    },
+    {
+      "topic_name": "Understanding the Chemical Properties of Acids and Bases",
+      "topic_type": "topic",
+      "start_page": 18,
+      "start_anchor": "2.1 UNDERST ANDING THE CHEMIC AL PROPERTIES OF ACIDS AND BASES",
+      "end_page": 18,
+      "end_anchor": "2.1.1 Acids and Bases in the Laboratory"
+    },
+    {
+      "topic_name": "Acids and Bases in the Laboratory",
+      "topic_type": "topic",
+      "start_page": 18,
+      "start_anchor": "2.1.1 Acids and Bases in the Laboratory",
+      "end_page": 18,
+      "end_anchor": "Activity 2.1"
+    },
+    {
+      "topic_name": "Activity: Testing Indicators",
+      "topic_type": "activity",
+      "start_page": 18,
+      "start_anchor": "Activity 2.1",
+      "end_page": 19,
+      "end_anchor": "2.1.2 How do Acids and Bases React with Metals?"
+    },
+    {
+      "topic_name": "How do Acids and Bases React with Metals?",
+      "topic_type": "topic",
+      "start_page": 19,
+      "start_anchor": "2.1.2 How do Acids and Bases React with Metals?",
+      "end_page": 20,
+      "end_anchor": "Activity 2.3"
+    },
+    {
+      "topic_name": "Activity: Observing Reactions with Zinc",
+      "topic_type": "activity",
+      "start_page": 20,
+      "start_anchor": "Activity 2.3",
+      "end_page": 20,
+      "end_anchor": "2.1.3 How do Metal Carbonates and Metal Hydrogencarbonates React with Acids?"
+    },
+    {
+      "topic_name": "How do Metal Carbonates and Metal Hydrogencarbonates React with Acids?",
+      "topic_type": "topic",
+      "start_page": 20,
+      "start_anchor": "2.1.3 How do Metal Carbonates and Metal Hydrogencarbonates React with Acids?",
+      "end_page": 20,
+      "end_anchor": "Activity 2.5"
+    },
+    {
+      "topic_name": "Activity: Observing Reactions with Carbonates",
+      "topic_type": "activity",
+      "start_page": 20,
+      "start_anchor": "Activity 2.5",
+      "end_page": 21,
+      "end_anchor": "2.1.5 Reaction of Metallic Oxides with Acids"
+    },
+    {
+      "topic_name": "Reaction of Metallic Oxides with Acids",
+      "topic_type": "topic",
+      "start_page": 21,
+      "start_anchor": "2.1.5 Reaction of Metallic Oxides with Acids",
+      "end_page": 21,
+      "end_anchor": "2.1.4 How do Acids and Bases React with each other?"
+    },
+    {
+      "topic_name": "How do Acids and Bases React with each other?",
+      "topic_type": "topic",
+      "start_page": 21,
+      "start_anchor": "2.1.4 How do Acids and Bases React with each other?",
+      "end_page": 22,
+      "end_anchor": "2.1.6 Reaction of a Non-metallic Oxide with Base"
+    },
+    {
+      "topic_name": "Reaction of a Non-metallic Oxide with Base",
+      "topic_type": "topic",
+      "start_page": 22,
+      "start_anchor": "2.1.6 Reaction of a Non-metallic Oxide with Base",
+      "end_page": 22,
+      "end_anchor": "2.2 WHA T DO ALL ACIDS AND ALL BASES HA VE IN COMMON?"
+    },
+    {
+      "topic_name": "What do all Acids and all Bases have in Common?",
+      "topic_type": "topic",
+      "start_page": 22,
+      "start_anchor": "2.2 WHA T DO ALL ACIDS AND ALL BASES HA VE IN COMMON?",
+      "end_page": 22,
+      "end_anchor": "Activity 2.8"
+    },
+    {
+      "topic_name": "Activity: Investigating Conductivity",
+      "topic_type": "activity",
+      "start_page": 22,
+      "start_anchor": "Activity 2.8",
+      "end_page": 23,
+      "end_anchor": "2.2.1 What Happens to an Acid or a Base in a Water Solution?"
+    },
+    {
+      "topic_name": "What Happens to an Acid or a Base in a Water Solution?",
+      "topic_type": "topic",
+      "start_page": 23,
+      "start_anchor": "2.2.1 What Happens to an Acid or a Base in a Water Solution?",
+      "end_page": 23,
+      "end_anchor": "Activity 2.9"
+    },
+    {
+      "topic_name": "Activity: Observing Gas Production",
+      "topic_type": "activity",
+      "start_page": 23,
+      "start_anchor": "Activity 2.9",
+      "end_page": 25,
+      "end_anchor": "2.3 HOW STRONG ARE ACID OR BASE SOLUTIONS?"
+    },
+    {
+      "topic_name": "How Strong are Acid or Base Solutions?",
+      "topic_type": "topic",
+      "start_page": 25,
+      "start_anchor": "2.3 HOW STRONG ARE ACID OR BASE SOLUTIONS?",
+      "end_page": 26,
+      "end_anchor": "Activity 2.11"
+    },
+    {
+      "topic_name": "Activity: Testing pH Values",
+      "topic_type": "activity",
+      "start_page": 26,
+      "start_anchor": "Activity 2.11",
+      "end_page": 26,
+      "end_anchor": "2.3.1 Impor tance of pH in Ever yday Life"
+    },
+    {
+      "topic_name": "Importance of pH in Everyday Life",
+      "topic_type": "topic",
+      "start_page": 26,
+      "start_anchor": "2.3.1 Impor tance of pH in Ever yday Life",
+      "end_page": 28,
+      "end_anchor": "2.4 MORE ABOUT SAL TSTSTS"
+    },
+    {
+      "topic_name": "More About Salts",
+      "topic_type": "topic",
+      "start_page": 28,
+      "start_anchor": "2.4 MORE ABOUT SAL TSTSTS",
+      "end_page": 28,
+      "end_anchor": "2.4.1 Family of Salts"
+    },
+    {
+      "topic_name": "Family of Salts",
+      "topic_type": "topic",
+      "start_page": 28,
+      "start_anchor": "2.4.1 Family of Salts",
+      "end_page": 28,
+      "end_anchor": "Activity 2.13"
+    },
+    {
+      "topic_name": "Activity: Identifying Salts",
+      "topic_type": "activity",
+      "start_page": 28,
+      "start_anchor": "Activity 2.13",
+      "end_page": 29,
+      "end_anchor": "2.4.2 pH of Salts"
+    },
+    {
+      "topic_name": "pH of Salts",
+      "topic_type": "topic",
+      "start_page": 29,
+      "start_anchor": "2.4.2 pH of Salts",
+      "end_page": 29,
+      "end_anchor": "2.4.3 Chemicals from Common Salt"
+    },
+    {
+      "topic_name": "Chemicals from Common Salt",
+      "topic_type": "topic",
+      "start_page": 29,
+      "start_anchor": "2.4.3 Chemicals from Common Salt",
+      "end_page": 31,
+      "end_anchor": "Uses of Baking soda"
+    },
+    {
+      "topic_name": "Uses of Baking Soda",
+      "topic_type": "topic",
+      "start_page": 31,
+      "start_anchor": "Uses of Baking soda",
+      "end_page": 32,
+      "end_anchor": "Uses of washing soda"
+    },
+    {
+      "topic_name": "Uses of Washing Soda",
+      "topic_type": "topic",
+      "start_page": 32,
+      "start_anchor": "Uses of washing soda",
+      "end_page": 32,
+      "end_anchor": "2.4.4 Are the Crystals of Salts really Dry?"
+    },
+    {
+      "topic_name": "Are the Crystals of Salts really Dry?",
+      "topic_type": "topic",
+      "start_page": 32,
+      "start_anchor": "2.4.4 Are the Crystals of Salts really Dry?",
+      "end_page": 33,
+      "end_anchor": "What you have learnt"
+    },
+    {
+      "topic_name": "What you have learnt",
+      "topic_type": "summary",
+      "start_page": 33,
+      "start_anchor": "What you have learnt",
+      "end_page": 34,
+      "end_anchor": "EXERCISES"
+    },
+    {
+      "topic_name": "Exercises",
+      "topic_type": "exercise",
+      "start_page": 34,
+      "start_anchor": "EXERCISES",
+      "end_page": 36,
+      "end_anchor": null
+    }
+  ],
+  "is_valid": true,
+  "issues": []
+}

@@ -1,0 +1,135 @@
+{
+  "book_uuid": "7e71cb6f-20bc-598e-a1ba-061c7abbf36b",
+  "chapter_id": "616c4978-6572-4bc1-b15c-9c5500475887",
+  "chapter_name": "5 Life Processes",
+  "pdf_path": "uploads\\class-10-science\\jesc105.pdf",
+  "source_stem": "jesc105",
+  "output_dir": "C:\\Users\\home\\Desktop\\Drona-ai\\CD-APP1FB\\backend\\app\\services\\new_rag\\outputs\\Class10_science\\chapters\\jesc105",
+  "stages": {
+    "stage1_page_extraction": {
+      "is_valid": true,
+      "issues": [],
+      "page_count": 21
+    },
+    "stage2_topic_detection": {
+      "topics": [
+        {
+          "topic_name": "What are Life Processes?",
+          "topic_type": "topic",
+          "start_page": 79,
+          "start_anchor": "5.1 WHA T ARE LIFE PROCESSES?",
+          "end_page": 81,
+          "end_anchor": "5.2 NUTRITION"
+        },
+        {
+          "topic_name": "Nutrition",
+          "topic_type": "topic",
+          "start_page": 81,
+          "start_anchor": "5.2 NUTRITION",
+          "end_page": 81,
+          "end_anchor": "5.2.1 Autotrophic Nutrition"
+        },
+        {
+          "topic_name": "Autotrophic Nutrition",
+          "topic_type": "topic",
+          "start_page": 81,
+          "start_anchor": "5.2.1 Autotrophic Nutrition",
+          "end_page": 84,
+          "end_anchor": "5.2.2 Heterotrophic Nutrition"
+        },
+        {
+          "topic_name": "Heterotrophic Nutrition",
+          "topic_type": "topic",
+          "start_page": 84,
+          "start_anchor": "5.2.2 Heterotrophic Nutrition",
+          "end_page": 84,
+          "end_anchor": "5.2.4 Nutrition in Human Beings"
+        },
+        {
+          "topic_name": "Nutrition in Human Beings",
+          "topic_type": "topic",
+          "start_page": 84,
+          "start_anchor": "5.2.4 Nutrition in Human Beings",
+          "end_page": 87,
+          "end_anchor": "5.3 RESPIR A AAAATION"
+        },
+        {
+          "topic_name": "Respiration",
+          "topic_type": "topic",
+          "start_page": 87,
+          "start_anchor": "5.3 RESPIR A AAAATION",
+          "end_page": 91,
+          "end_anchor": "5.4.1 Transportation in Human Beings"
+        },
+        {
+          "topic_name": "Transportation in Human Beings",
+          "topic_type": "topic",
+          "start_page": 91,
+          "start_anchor": "5.4.1 Transportation in Human Beings",
+          "end_page": 94,
+          "end_anchor": "5.4.2 Transportation in Plants"
+        },
+        {
+          "topic_name": "Transportation in Plants",
+          "topic_type": "topic",
+          "start_page": 94,
+          "start_anchor": "5.4.2 Transportation in Plants",
+          "end_page": 96,
+          "end_anchor": "5.5 EX CRETION"
+        },
+        {
+          "topic_name": "Excretion",
+          "topic_type": "topic",
+          "start_page": 96,
+          "start_anchor": "5.5 EX CRETION",
+          "end_page": 96,
+          "end_anchor": "5.5.1 Excretion in Human Beings"
+        },
+        {
+          "topic_name": "Excretion in Human Beings",
+          "topic_type": "topic",
+          "start_page": 96,
+          "start_anchor": "5.5.1 Excretion in Human Beings",
+          "end_page": 98,
+          "end_anchor": "5.5.2 Excretion in Plants"
+        },
+        {
+          "topic_name": "Excretion in Plants",
+          "topic_type": "topic",
+          "start_page": 98,
+          "start_anchor": "5.5.2 Excretion in Plants",
+          "end_page": 98,
+          "end_anchor": "What you have learnt"
+        },
+        {
+          "topic_name": "What you have learnt",
+          "topic_type": "summary",
+          "start_page": 98,
+          "start_anchor": "What you have learnt",
+          "end_page": 99,
+          "end_anchor": "EXERCISES"
+        },
+        {
+          "topic_name": "Exercises",
+          "topic_type": "exercise",
+          "start_page": 99,
+          "start_anchor": "EXERCISES",
+          "end_page": 99,
+          "end_anchor": null
+        }
+      ],
+      "is_valid": true,
+      "issues": []
+    },
+    "chunking": {
+      "parent_count": 13,
+      "child_count": 46,
+      "diagram_count": 46,
+      "table_candidate_count": 0,
+      "oversized_parents": []
+    }
+  },
+  "detected_chapter_title": "5 Life Processes",
+  "status": "ingested",
+  "message": "Ingested 92 chunks (13 topics, 46 diagrams, 0 table candidates) into Qdrant collection 'textbooks_v3'."
+}

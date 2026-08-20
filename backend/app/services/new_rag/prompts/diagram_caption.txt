@@ -1,0 +1,11 @@
+This image is a diagram/figure from an Indian school textbook (NCERT-style).
+{context_block}
+Write a 1-2 sentence caption describing its educational content, so a student's question about this concept can find this diagram via text search. Do not describe visual style (colors, layout, "a diagram showing...") - describe what it teaches.
+
+If the image is:
+- A labeled diagram (parts/components marked with letters or names) - name the labeled parts you can read, not just the general subject (e.g. "Shows the human heart with the atria, ventricles, and major blood vessels labeled" rather than just "Shows the human heart").
+- A graph or chart - describe the relationship or trend it shows (e.g. "Shows pressure increasing as depth increases in a liquid"), not just "a graph".
+- A process/flow diagram - describe the sequence or steps shown, in order.
+- A simple illustrative or decorative image with no real educational content of its own (an icon, a border, a stock photo) - give a short factual caption or, if it teaches nothing on its own, state plainly that it is decorative.
+
+Include any text, numbers, units, or labels you can actually read in the image - those specific terms are often exactly what a student would search for.

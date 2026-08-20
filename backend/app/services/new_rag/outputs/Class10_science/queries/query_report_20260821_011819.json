@@ -1,0 +1,36 @@
+{
+  "query": "What is ohms law?",
+  "status": "confident",
+  "top_score": 5.600411415100098,
+  "retried": false,
+  "escalated_to_parent": true,
+  "chunks": [
+    {
+      "payload": {
+        "parent_chunk_id": "f61fb8fa-1d9e-4550-9f96-70a2ed25d8ef",
+        "chapter_id": "dbfb6532-550d-408b-a1b1-001cbd6f1298",
+        "chapter_name": "11 Electricity",
+        "topic_id": "f61fb8fa-1d9e-4550-9f96-70a2ed25d8ef",
+        "topic_name": "Ohm's Law",
+        "chunk_type": "concept",
+        "text": "11.4 OHM’S LA W WW\nIs there a relationship between the potential difference across a conductor\nand the current through it? Let us explore with an Activity.\nActivity 11.1\n/square6Set up a circuit as shown in Fig. 11.2,\nconsisting of a nichrome wire XY of length,\nsay 0.5 m, an ammeter , a voltmeter and\nfour cells of 1.5 V each. (Nichrome is an\nalloy of nickel, chromium, manganese, and\niron metals.)\n/square6First use only one cell as the source in the\ncircuit. Note the reading in the ammeter I,\nfor the current and reading of the voltmeter\nV for the potential difference across the\nnichrome wire XY in the circuit. Tabulate\nthem in the Table given.\n/square6Next connect two cells in the circuit and\nnote the respective readings of the ammeter and voltmeter for the values of current through\nthe nichrome wire and potential difference across the nichrome wire.\n/square6Repeat the above steps using three cells and then four cells in the circuit separately.\n/square6Calculate the ratio of V to I for each pair of potential difference V and current I.\nS. Number of cells Current through Potential difference V/I\nNo. used in the nichrome across the (volt/ampere)\ncircuit wire, I nichrome\n(ampere) wire, V (volt)\n1 1\n2 2\n3 3\n4 4\n/square6Plot a graph between V and I, and observe the nature of the graph.\n7 Electric bulb  or    \n8 A resistor of resistance R\n9 Variable r esistance or r heostat  or \n10 Ammeter\n11 Voltmeter\nFigure 11.2  Electric circuit for studying Ohm’s law\nReprint 2026-27\n\nScience176\nFigure 11.3\nV–I graph for a nichrome wire. A\nstraight line plot shows that as the\ncurrent through a wire increases, the\npotential difference across the wire\nincreases linearly – this Ohm’s law.\nActivity 11.2\n/square6Take a nichrome wire, a torch bulb, a 10 W bulb and an ammeter (0 – 5 A range), a plug\nkey and some connecting wires.\n/square6Set up the circuit by connecting four dry cells of 1.5 V each in series with the ammeter\nleaving a gap XY in the circuit, as shown in Fig. 11.4.\nIn this Activity, you will find that approximately the\nsame value for V/I is obtained in each case. Thus the V–I\ngraph is a straight line that passes through the origin of\nthe graph, as shown in Fig. 11.3. Thus, V/I is a constant\nratio.\nIn 1827, a German physicist Georg Simon Ohm\n(1787–1854) found out the relationship between the current\nI, flowing in a metallic wire and the potential difference\nacross its terminals. The potential difference, V, across the\nends of a given metallic wire in an electric circuit is directly\nproportional to the current flowing through it,  provided its\ntemperature remains the same. This called Ohm’s law. In\nother words –\nV ∝  I (11.4)\nor V/I = constant\n= R\nor V = IR (11.5)\nIn Eq. (11.4), R is a constant for the given metallic wire\nat a given temperature and is called its resistance. It is the\nproperty of a conductor to resist the flow of charges  through it. Its SI\nunit is ohm, represented by the Greek letter Ω . According to Ohm’s law,\nR = V/I (11.6)\nIf the potential difference across the two ends of a conductor is 1 V\nand the current through it is 1 A, then the resistance R, of the conductor\nis 1 Ω . That is, 1 ohm = \n1 volt\n1 ampere\nAlso from Eq. (11.5) we get\nI = V/R (11.7)\nIt is obvious from Eq. (11.7) that the current through a resistor is\ninversely proportional to its resistance. If the resistance is doubled the\ncurrent gets halved. In many practical cases it is necessary to increase\nor decrease the current in an electric circuit. A component used to\nregulate current without changing the voltage source is called variable\nresistance. In an electric circuit, a device called rheostat is often used to\nchange the resistance in the circuit. We will now study about electrical\nresistance of a conductor with the help of following Activity.\nReprint 2026-27\n\nElectricity 177\nIn this Activity we observe that the current is different for different\ncomponents. Why do they differ? Certain components offer an easy path\nfor the flow of electric current while the others resist the flow. We know\nthat motion of electrons in an electric circuit constitutes an electric\ncurrent. The electrons, however, are not completely free to move within a\nconductor. They are restrained by the attraction of the atoms among\nwhich they move. Thus, motion of electrons through a conductor is\nretarded by its resistance. A component of a given size that offers a low\nresistance is a good conductor. A conductor having some appreciable\nresistance is called a resistor. A component of identical size that offers a\nhigher resistance is a poor conductor. An insulator of the same size offers\neven higher resistance.\n",
+        "token_count": 1189,
+        "start_page": 175,
+        "end_page": 177,
+        "topic": "Ohm's Law",
+        "subtopic": null,
+        "concept": null,
+        "chapter_number": 11,
+        "page_number": 175,
+        "has_table": false,
+        "has_diagram": false,
+        "has_example": false,
+        "has_formula": false,
+        "has_question": false,
+        "has_definition": false,
+        "compressed_text": "Let us explore with an Activity. S. 11.4. 11.3. Thus, V/I is a constant\nratio. (11.4), R is a constant for the given metallic wire\nat a given temperature and is called its resistance. It is the\nproperty of a conductor to resist the flow of charges  through it. Its SI\nunit is ohm, represented by the Greek letter Ω . (11.5) we get\nI = V/R (11.7)\nIt is obvious from Eq. (11.7) that the current through a resistor is\ninversely proportional to its resistance. If the resistance is doubled the\ncurrent gets halved. In many practical cases it is necessary to increase\nor decrease the current in an electric circuit. A component used to\nregulate current without changing the voltage source is called variable\nresistance. In an electric circuit, a device called rheostat is often used to\nchange the resistance in the circuit. Reprint 2026-27\n\nElectricity 177\nIn this Activity we observe that the current is different for different\ncomponents. Thus, motion of electrons through a conductor is\nretarded by its resistance. A component of a given size that offers a low\nresistance is a good conductor. A conductor having some appreciable\nresistance is called a resistor. A component of identical size that offers a\nhigher resistance is a poor conductor."
+      },
+      "rerank_score": 5.600411415100098
+    }
+  ]
+}

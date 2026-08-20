@@ -1,0 +1,92 @@
+{
+  "jesc101": {
+    "chapter_name": "1 Chemical Reactions and Equations",
+    "status": "ingested",
+    "message": "Ingested 71 chunks (17 topics, 34 diagrams, 2 table candidates) into Qdrant collection 'textbooks_v3'.",
+    "folder": "jesc101"
+  },
+  "jesc104": {
+    "chapter_name": "4 Carbon and its Compounds",
+    "status": "ingested",
+    "message": "Ingested 93 chunks (20 topics, 48 diagrams, 0 table candidates) into Qdrant collection 'textbooks_v3'.",
+    "folder": "jesc104"
+  },
+  "jesc102": {
+    "chapter_name": "2 Acids, Bases and Salts",
+    "status": "ingested",
+    "message": "Ingested 93 chunks (28 topics, 45 diagrams, 0 table candidates) into Qdrant collection 'textbooks_v3'.",
+    "folder": "jesc102"
+  },
+  "jesc103": {
+    "chapter_name": "3 Metals and Non-metals",
+    "status": "ingested",
+    "message": "Ingested 92 chunks (28 topics, 46 diagrams, 3 table candidates) into Qdrant collection 'textbooks_v3'.",
+    "folder": "jesc103"
+  },
+  "jesc105": {
+    "chapter_name": "5 Life Processes",
+    "status": "ingested",
+    "message": "Ingested 92 chunks (13 topics, 46 diagrams, 0 table candidates) into Qdrant collection 'textbooks_v3'.",
+    "folder": "jesc105"
+  },
+  "jesc106": {
+    "chapter_name": "6 Control and Coordination",
+    "status": "ingested",
+    "message": "Ingested 60 chunks (10 topics, 31 diagrams, 0 table candidates) into Qdrant collection 'textbooks_v3'.",
+    "folder": "jesc106"
+  },
+  "jesc107": {
+    "chapter_name": "7 How do Organisms Reproduce?",
+    "status": "ingested",
+    "message": "Ingested 70 chunks (24 topics, 34 diagrams, 0 table candidates) into Qdrant collection 'textbooks_v3'.",
+    "folder": "jesc107"
+  },
+  "jesc108": {
+    "chapter_name": "8 Heredity",
+    "status": "ingested",
+    "message": "Ingested 31 chunks (10 topics, 16 diagrams, 0 table candidates) into Qdrant collection 'textbooks_v3'.",
+    "folder": "jesc108"
+  },
+  "jesc109": {
+    "chapter_name": "9 Light – Reflection and Refraction",
+    "status": "ingested",
+    "message": "Ingested 121 chunks (35 topics, 55 diagrams, 1 table candidates) into Qdrant collection 'textbooks_v3'.",
+    "folder": "jesc109"
+  },
+  "jesc110": {
+    "chapter_name": "10 The Human Eye and the Colourful World",
+    "status": "ingested",
+    "message": "Ingested 48 chunks (13 topics, 25 diagrams, 0 table candidates) into Qdrant collection 'textbooks_v3'.",
+    "folder": "jesc110"
+  },
+  "jesc111": {
+    "chapter_name": "11 Electricity",
+    "status": "ingested",
+    "message": "Ingested 102 chunks (9 topics, 49 diagrams, 6 table candidates) into Qdrant collection 'textbooks_v3'.",
+    "folder": "jesc111"
+  },
+  "jesc112": {
+    "chapter_name": "12 Magnetic Effects of Electric Current",
+    "status": "ingested",
+    "message": "Ingested 56 chunks (15 topics, 31 diagrams, 0 table candidates) into Qdrant collection 'textbooks_v3'.",
+    "folder": "jesc112"
+  },
+  "jesc113": {
+    "chapter_name": "13 Our Environment",
+    "status": "ingested",
+    "message": "Ingested 41 chunks (13 topics, 21 diagrams, 0 table candidates) into Qdrant collection 'textbooks_v3'.",
+    "folder": "jesc113"
+  },
+  "jesc1an": {
+    "chapter_name": null,
+    "status": "skipped_non_chapter",
+    "message": "This file's opening text matches a front/back-matter marker (answers key, preface, table of contents, etc.) - not treated as an error, just correctly excluded before running topic detection on it.",
+    "folder": "jesc1an"
+  },
+  "jesc1ps": {
+    "chapter_name": null,
+    "status": "blocked_stage1",
+    "message": "Page-sequence validation failed - routed to manual review, ingestion stopped.",
+    "folder": "jesc1ps"
+  }
+}
