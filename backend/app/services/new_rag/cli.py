@@ -340,20 +340,24 @@ def ask_question_flow():
 
         # Answer generation - same prompt/model the real app uses
         # (answer_service.generate_answer), called standalone: no
-        # orchestrator, no personalization, no TTS/video call. Exists so the
-        # team can compare this answer (generated from the new RAG's
-        # retrieved chunks) against the previous flow's answer to the same
-        # question.
-        gen_choice = input("\nGenerate an answer from this context using the production "
-                            "answer prompt? [y/n]: ").strip().lower()
-        if gen_choice == "y":
-            print("\nGenerating answer...\n")
-            from backend.app.services.new_rag.answer_test import generate_test_answer
-            generated_answer = generate_test_answer(query, package["context"], class_name, subject)
-            print("=" * 70)
-            print("GENERATED ANSWER (TEXT_RESPONSE):")
-            print(generated_answer["text_response"] or "(none - markers not found in response)")
-            print("=" * 70)
+        # orchestrator, no personalization, no TTS/video call. Runs
+        # automatically for every question (not gated behind a prompt) since
+        # this is exactly what the report exists to capture: how the new
+        # RAG's retrieved chunks change both the quick-answer text mode and
+        # the video transcript mode, for comparison against the previous
+        # flow's answers to the same questions. GENERATE_ANSWER_SYSTEM
+        # always produces both TEXT_RESPONSE (quick-answer mode) and
+        # VOICE_SCRIPT (video-transcript mode) in the one call - no separate
+        # calls or mode selection needed.
+        print("\nGenerating answer (quick-answer text + video transcript)...\n")
+        from backend.app.services.new_rag.answer_test import generate_test_answer
+        generated_answer = generate_test_answer(query, package["context"], class_name, subject)
+        print("=" * 70)
+        print("GENERATED ANSWER - QUICK-ANSWER MODE (TEXT_RESPONSE):")
+        print(generated_answer["text_response"] or "(none - markers not found in response)")
+        print("\nGENERATED ANSWER - VIDEO MODE (VOICE_SCRIPT / transcript):")
+        print(generated_answer["voice_script"] or "(none - markers not found in response)")
+        print("=" * 70)
 
     # write a per-query report, same convention as the existing
     # orchestrator_test/test_outputs/query_report_*.json pattern
