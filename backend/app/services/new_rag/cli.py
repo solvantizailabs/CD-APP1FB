@@ -10,10 +10,13 @@ Two options only, per design:
      backend/app/services/new_rag/outputs/{book_uuid}/ for inspection
      (raw pages, topic manifest, reconstructed chapter markdown, extracted
      diagram images, chunks).
-  2) Ask a question - runs ONLY the new retrieval logic against whatever has
-     been ingested. No orchestrator call, no personalization, no generated
-     answer - just the retrieved chunks themselves, since that's what this
-     tool exists to verify.
+  2) Ask a question - runs the new retrieval logic against whatever has been
+     ingested, then optionally generates an answer from the retrieved
+     context using the same answer-generation prompt the real app uses
+     (answer_service.generate_answer), called standalone. No orchestrator
+     call, no personalization, no TTS/video call - just retrieval plus that
+     one prompt, so the retrieved chunks and the answer they produce can
+     both be inspected and compared against the previous flow.
 
 This does not import, call, or modify chat.py, the orchestrator, the
 personalization engine, or the existing textbooks_v2 collection - it is a
@@ -317,6 +320,7 @@ def ask_question_flow():
     # grounding readiness. Reuses the chunks already retrieved above rather
     # than calling retrieve() a second time via retrieve_as_package().
     package = None
+    generated_answer = None
     if chunks:
         from backend.app.services.new_rag.context.compressor import compress
         from backend.app.services.new_rag.context.context_builder import build_context_package
@@ -333,6 +337,23 @@ def ask_question_flow():
         print(f"result_validation: {'OK' if is_result_valid else 'ISSUES: ' + '; '.join(result_issues)}")
         print(f"context preview:\n{package['context'][:400]}{'...' if len(package['context']) > 400 else ''}")
         print("-" * 70)
+
+        # Answer generation - same prompt/model the real app uses
+        # (answer_service.generate_answer), called standalone: no
+        # orchestrator, no personalization, no TTS/video call. Exists so the
+        # team can compare this answer (generated from the new RAG's
+        # retrieved chunks) against the previous flow's answer to the same
+        # question.
+        gen_choice = input("\nGenerate an answer from this context using the production "
+                            "answer prompt? [y/n]: ").strip().lower()
+        if gen_choice == "y":
+            print("\nGenerating answer...\n")
+            from backend.app.services.new_rag.answer_test import generate_test_answer
+            generated_answer = generate_test_answer(query, package["context"], class_name, subject)
+            print("=" * 70)
+            print("GENERATED ANSWER (TEXT_RESPONSE):")
+            print(generated_answer["text_response"] or "(none - markers not found in response)")
+            print("=" * 70)
 
     # write a per-query report, same convention as the existing
     # orchestrator_test/test_outputs/query_report_*.json pattern
@@ -357,6 +378,7 @@ def ask_question_flow():
             "chunks": serializable_chunks,
             "child_candidates": serializable_child_candidates,
             "full_candidate_pool": serializable_full_pool,
+            "generated_answer": generated_answer,
         }, f, indent=2, ensure_ascii=False)
     print(f"\nSaved: {report_path}")
 
