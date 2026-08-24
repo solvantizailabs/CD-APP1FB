@@ -19,6 +19,7 @@ load_dotenv(override=True)
 from backend.app.services.llm.openai_client import OPENAI_MODEL, create_client
 from backend.app.core.firebase.firebase_init import db
 from backend.app.services.retrieval import qdrant_service
+from backend.app.services.retrieval import new_rag_adapter
 
 # Path to master prompt file
 PROMPT_FILE_PATH = os.path.join(os.path.dirname(__file__), "master_orchestrator_prompt.txt")
@@ -196,11 +197,17 @@ def resolve_book_uuid_for_subject(grade: int, matched_subject: str) -> str:
     inconsistent naming at write time; among fuzzy-matching candidates, this
     prefers the one with a real book_uuid and the most chapters.
 
-    Candidates are gated on qdrant_service.book_has_content(): a subject doc
-    can have Firestore chapter metadata (written at upload time) with zero
-    matching Qdrant vectors (never actually (re-)ingested through the
-    parent-child pipeline) - a book_uuid with no content would resolve
-    "successfully" here but then silently return zero RAG chunks downstream.
+    Candidates are gated on new_rag_adapter.book_has_content() (textbooks_v3-
+    aware, swapped 2026-08-21 from the old qdrant_service.book_has_content(),
+    which only ever checked textbooks_v2 - see docs/RAG_INTEGRATION_PLAN.md
+    §4.2): a subject doc can have Firestore chapter metadata (written at
+    upload time) with zero matching Qdrant vectors (never actually
+    (re-)ingested through the new_rag pipeline) - a book_uuid with no
+    content would resolve "successfully" here but then silently return zero
+    RAG chunks downstream. A book only ingested under the OLD pipeline
+    (textbooks_v2) and not yet re-ingested through the live upload UI will
+    correctly show as having no content here too - intentional, since
+    ingestion now only ever writes to textbooks_v3 going forward.
     """
     normalized = normalize_subject_name(matched_subject or "")
     if not normalized:
@@ -210,12 +217,61 @@ def resolve_book_uuid_for_subject(grade: int, matched_subject: str) -> str:
         sid = subject_id.strip().lower()
         if normalized == sid or normalized in sid or sid in normalized:
             book_uuid = data.get("book_uuid") or ""
-            if not book_uuid or not qdrant_service.book_has_content(book_uuid):
+            if not book_uuid or not new_rag_adapter.book_has_content(book_uuid):
                 continue
             score = 100 + len(data.get("chapters", []))
             if score > best_score:
                 best_score, best_uuid = score, book_uuid
     return best_uuid
+
+
+def resolve_chapter_id_for_chapter(grade: int, matched_subject: str, matched_chapter: str) -> Optional[str]:
+    """
+    Resolves the orchestrator's Stage-1 `matched_chapter` (a NAME string,
+    LLM-guessed) to the `new_rag_chapter_id` UUID new_rag actually stamped
+    onto every textbooks_v3 chunk payload for that chapter at ingestion time
+    (see books.py::process_batch_ingest_in_background, which now writes this
+    field alongside the existing admin-facing `chapter_id`). Lets retrieval
+    narrow to one chapter server-side via new_rag's own chapter_id filter,
+    instead of only post-hoc filtering by chapter_name the way the old
+    hybrid_search()'s `chapter_names` metadata_filter did. Returns None (not
+    an error) if no match is found - the caller should fall back to an
+    unfiltered book-wide search, same as before this existed.
+
+    Matching is EXACT after normalization (strip leading chapter number,
+    strip punctuation, lowercase) - NOT substring containment. Found live
+    (2026-08-22): a substring check (`name in normalized_chapter`) matched
+    "Circles" against "Areas Related to Circles" purely because "circles" is
+    literally a substring of the longer name, silently narrowing a real
+    query to the wrong chapter with high confidence rather than searching
+    the whole book. A false EXACT match is far less likely than a false
+    substring match, and a missed match here just falls back to an
+    unfiltered book-wide search (safe) rather than a confidently wrong one
+    (unsafe) - so exact-only is the correct tradeoff, not just the simpler
+    one.
+    """
+    if not matched_chapter:
+        return None
+
+    def _normalize(name: str) -> str:
+        n = re.sub(r"^\d+\s*", "", (name or "").strip())
+        n = re.sub(r"[^a-z0-9 ]", "", n.lower())
+        return re.sub(r"\s+", " ", n).strip()
+
+    normalized_subject = normalize_subject_name(matched_subject or "")
+    normalized_chapter = _normalize(matched_chapter)
+    if not normalized_chapter:
+        return None
+    for subject_id, data in _get_classes_subjects_docs(grade):
+        sid = subject_id.strip().lower()
+        if not (normalized_subject == sid or normalized_subject in sid or sid in normalized_subject):
+            continue
+        for chapter in data.get("chapters", []):
+            if _normalize(chapter.get("chapter_name")) == normalized_chapter:
+                cid = chapter.get("new_rag_chapter_id")
+                if cid:
+                    return cid
+    return None
 
 
 def get_valid_subjects_for_grade(grade: int) -> set:
@@ -228,10 +284,12 @@ def get_valid_subjects_for_grade(grade: int) -> set:
     question as curriculum and skipping real grounding.
 
     A subject only counts as "valid" here if its book_uuid actually has
-    ingested content in Qdrant (qdrant_service.book_has_content()) - a
+    ingested content in Qdrant (new_rag_adapter.book_has_content(), swapped
+    2026-08-21 from qdrant_service.book_has_content() - see
+    resolve_book_uuid_for_subject's docstring above for why) - a
     classes/{grade}/subjects/{subject} doc can exist with chapter metadata
     but zero matching vectors (uploaded but never (re-)ingested through the
-    parent-child pipeline). Without this gate, such a subject would pass
+    new_rag pipeline). Without this gate, such a subject would pass
     validation, RAG retrieval would then resolve a book_uuid but return no
     chunks, and the student would get an ungrounded "curriculum" answer
     instead of being correctly routed to GENERAL_KNOWLEDGE.
@@ -239,7 +297,7 @@ def get_valid_subjects_for_grade(grade: int) -> set:
     subjects = {
         sid.strip().lower()
         for sid, data in _get_classes_subjects_docs(grade)
-        if qdrant_service.book_has_content(data.get("book_uuid") or "")
+        if new_rag_adapter.book_has_content(data.get("book_uuid") or "")
     }
     if subjects:
         return subjects
@@ -266,7 +324,7 @@ def get_valid_subjects_for_grade(grade: int) -> set:
             for key, entry in local_cache.items():
                 parts = key.split("_")
                 if len(parts) >= 2 and parts[0].isdigit() and int(parts[0]) == grade:
-                    if qdrant_service.book_has_content(entry.get("book_uuid") or ""):
+                    if new_rag_adapter.book_has_content(entry.get("book_uuid") or ""):
                         subjects.add(parts[1].strip().lower())
         except Exception as e:
             print(f"[CURRICULUM VALIDATION WARN] chapters_cache.json load exception: {e}")
@@ -317,6 +375,45 @@ def restyle_text_narration(text: str, style: str, client, model: str) -> Optiona
         return rewritten if rewritten else None
     except Exception as e:
         print(f"[RESTYLE] LLM call failed: {e}")
+        return None
+
+
+def ground_text_narration(text: str, rag_chunks: list, client, model: str) -> Optional[str]:
+    """
+    Focused, single-purpose grounding pass (see restyle_text_narration for
+    why this exists as a separate call, and docs/RAG_INTEGRATION_PLAN.md
+    §4.2b for the design rationale). The main orchestrator LLM call produces
+    text_narration BEFORE retrieval even runs (see run_orchestrator_pipeline
+    below) - until this function existed, retrieved rag_chunks were only an
+    audit trail, never actually fed back into what the model said. This
+    revises text_narration ONLY where it conflicts with or omits something
+    present in the retrieved textbook chunks - must not introduce facts
+    absent from both the original narration AND the chunks, must not change
+    structure/style (that's restyle's job, not this one). Returns None (
+    caller keeps the original) on any failure or if chunks are empty - this
+    is a correctness enhancement, never allowed to block or corrupt an answer.
+    """
+    if not rag_chunks:
+        return None
+    context = "\n\n---\n\n".join(c.get("full_text") or c.get("content_snippet", "") for c in rag_chunks[:6])
+    if not context.strip():
+        return None
+    prompt = (
+        "You are checking a tutor's answer against the actual textbook content below. "
+        "Revise the ANSWER only where it factually conflicts with the TEXTBOOK CONTEXT, "
+        "or to fill a clear factual gap the context resolves. Do not change tone, "
+        "structure, or length otherwise. Do not add any fact not present in either the "
+        "ANSWER or the TEXTBOOK CONTEXT. If the answer is already consistent with the "
+        "context, return it unchanged.\n\n"
+        f"TEXTBOOK CONTEXT:\n{context}\n\nANSWER:\n{text}\n\n"
+        "Revised answer (same facts unless corrected by context, no preamble/commentary):"
+    )
+    try:
+        response = client.models.generate_content(model=model, contents=[prompt], config={"temperature": 0.2})
+        grounded = (response.text or "").strip()
+        return grounded if grounded else None
+    except Exception as e:
+        print(f"[GROUNDING] LLM call failed: {e}")
         return None
 
 
@@ -791,8 +888,18 @@ def run_orchestrator_pipeline(raw_query: str, student_profile: Dict[str, Any]) -
     rag_chunks = []
     rag_executed = False
     resolved_book_uuid = ""
+    retrieval_result = None  # full new_rag_adapter result - used by the grounding pass (below) and the per-query debug record (chat.py, §9)
 
     # Step 4: Handle RAG Retrieval if Authorized + CURRICULUM
+    # RAG process swap (2026-08-21, docs/RAG_INTEGRATION_PLAN.md §4.2): this
+    # block now calls new_rag_adapter.hybrid_search_v2() (textbooks_v3,
+    # dense+sparse fusion, cross-encoder rerank, confidence-tiered) instead
+    # of qdrant_service.hybrid_search() (textbooks_v2, dense+local-BM25,
+    # no rerank). The surrounding sequence - resolve book_uuid, search,
+    # normalize into rag_chunks, grounding-quality gate on matched_chapter -
+    # is unchanged; only the search call and the two threshold checks that
+    # used to compare against the old 0-1 RRF score scale are new, since
+    # new_rag's cross-encoder returns raw logits (~-9 to +7), not 0-1 scores.
     if is_authorized and classification == "CURRICULUM":
         print(f"[ORCHESTRATOR] Step 3/3 â€” RAG vector search for: '{reformulated_query[:60]}...'")
         print(f"[RAG SEARCH] Running hybrid vector search for: '{reformulated_query}'...")
@@ -813,77 +920,58 @@ def run_orchestrator_pipeline(raw_query: str, student_profile: Dict[str, Any]) -
                     f"Could not resolve a book UUID for subject '{matched_subject}' and Class {grade}."
                 )
 
-            # Query Qdrant vector database using qdrant_service.hybrid_search
-            if hasattr(qdrant_service, 'hybrid_search'):
-                filters = {}
-                if matched_chapter:
-                    filters["chapter_names"] = [matched_chapter]
-                raw_chunks, _, _ = qdrant_service.hybrid_search(
+            resolved_chapter_id = resolve_chapter_id_for_chapter(grade, matched_subject, matched_chapter) if matched_chapter else None
+
+            retrieval_result = new_rag_adapter.hybrid_search_v2(
+                query=reformulated_query,
+                book_uuid=resolved_book_uuid,
+                class_name=str(grade),
+                subject=matched_subject or "",
+                chapter_id=resolved_chapter_id,
+            )
+
+            # Safety net: the orchestrator LLM's matched_chapter guess is
+            # sometimes wrong (e.g. it can confuse lexically-similar chapters
+            # like "respiration" vs "reproduction"), which silently narrows
+            # the search to the wrong chapter and returns weak, irrelevant
+            # top hits instead of erroring. new_rag's own retrieve() already
+            # does one bounded retry internally when its confidence tier is
+            # LOW/INSUFFICIENT, but that retry re-runs the SAME chapter
+            # filter - it can't tell "this chapter has nothing" apart from
+            # "the wrong chapter was guessed". This outer retry specifically
+            # DROPS the chapter filter and searches the whole subject book
+            # (still gated to the validated book_uuid), which the old 0.55
+            # raw-score check used to do - now gated on confidence_tier
+            # instead of a raw score, since new_rag's cross-encoder scale
+            # isn't 0-1.
+            if resolved_chapter_id and retrieval_result["confidence_tier"] in ("LOW", "INSUFFICIENT"):
+                print(
+                    f"[RAG SEARCH] Low confidence (tier={retrieval_result['confidence_tier']}) for "
+                    f"chapter-filtered search on '{matched_chapter}' - retrying across the whole subject book."
+                )
+                retrieval_result = new_rag_adapter.hybrid_search_v2(
+                    query=reformulated_query,
                     book_uuid=resolved_book_uuid,
-                    query=reformulated_query,
-                    keywords=[],
-                    conceptual_score=0.7,
-                    metadata_filters=filters
+                    class_name=str(grade),
+                    subject=matched_subject or "",
+                    chapter_id=None,
                 )
 
-                # Safety net: the orchestrator LLM's matched_chapter guess is
-                # sometimes wrong (e.g. it can confuse lexically-similar
-                # chapters like "respiration" vs "reproduction"), which
-                # silently narrows the search to the wrong chapter and
-                # returns weak, irrelevant top hits instead of erroring. A
-                # low top score on a chapter-filtered search is a reliable
-                # signal of that failure mode, since a real match in the
-                # right chapter typically scores well above this. When it
-                # happens, retry across the whole subject book (still gated
-                # to the validated book_uuid) rather than trust the guess.
-                if filters:
-                    top_score = 0.0
-                    if raw_chunks:
-                        first = raw_chunks[0]
-                        top_score = first[0] if isinstance(first, tuple) and len(first) >= 2 else getattr(first, "score", 0.0)
-                    if (top_score or 0.0) < 0.55:
-                        print(
-                            f"[RAG SEARCH] Weak top score ({top_score:.3f}) for chapter-filtered "
-                            f"search on '{matched_chapter}' - retrying across the whole subject book."
-                        )
-                        raw_chunks, _, _ = qdrant_service.hybrid_search(
-                            book_uuid=resolved_book_uuid,
-                            query=reformulated_query,
-                            keywords=[],
-                            conceptual_score=0.7,
-                            metadata_filters={}
-                        )
-            elif hasattr(qdrant_service, 'search_books_hybrid'):
-                raw_chunks = qdrant_service.search_books_hybrid(
-                    query=reformulated_query,
-                    limit=10,
-                    subject=matched_subject,
-                    class_level=grade
-                )
-            else:
-                raw_chunks = []
-
-            for idx, c in enumerate(raw_chunks[:10], start=1):
-                # hybrid_search returns (hybrid_score, payload_dict), while
-                # some fallback implementations return a result object/dict.
-                # Normalize both shapes before writing the audit report.
-                if isinstance(c, tuple) and len(c) >= 2:
-                    result_score, payload = c[0], c[1]
-                else:
-                    result_score, payload = getattr(c, "score", 0.0), c
-
-                if hasattr(payload, "payload"):
-                    payload = payload.payload
-                if not isinstance(payload, dict):
-                    payload = {}
-
+            for idx, (result_score, payload) in enumerate(retrieval_result["score_payload_pairs"][:10], start=1):
                 rag_chunks.append({
                     "chunk_index": idx,
+                    "chunk_id": payload.get("chunk_id"),
+                    "chunk_type": payload.get("chunk_type"),
                     "score": round(float(result_score or 0.0), 4),
                     "book_name": payload.get("book_name", payload.get("book", "")),
                     "chapter_name": payload.get("chapter_name", payload.get("chapter", "")),
-                    "page_number": payload.get("chpstpage") or payload.get("pdf_page"),
-                    "content_snippet": (payload.get("text", payload.get("content", "")) or "")[:150] + "..."
+                    "topic_name": payload.get("topic_name"),
+                    "page_number": payload.get("page_number") or payload.get("chpstpage") or payload.get("pdf_page"),
+                    "content_snippet": (payload.get("text", payload.get("content", "")) or "")[:150] + "...",
+                    # Full, untruncated chunk text - the old content_snippet above stays 150-char
+                    # for backward-compatible callers; this is what the per-query debug record
+                    # (chat.py, §9) and the grounding pass (below) actually use.
+                    "full_text": payload.get("text", payload.get("content", "")) or "",
                 })
         except Exception as e:
             print(f"[RAG SEARCH NOTICE] Qdrant search fallback: {e}")
@@ -896,22 +984,44 @@ def run_orchestrator_pipeline(raw_query: str, student_profile: Dict[str, Any]) -
         # "Resources and Development" - a Geography chapter - because that
         # was simply the closest of a bad set of options; the actual top RAG
         # score was ~0.015, i.e. noise, meaning the book has no real content
-        # on the topic at all. The existing chapter-filtered-search retry
-        # above already handles a WRONG chapter guess by re-searching the
-        # whole book; this handles the book having NO real answer anywhere -
+        # on the topic at all. The chapter-filtered-search retry above
+        # already handles a WRONG chapter guess by re-searching the whole
+        # book; this handles the book having NO real answer anywhere -
         # matched_chapter (used to label the History page entry) must not
         # claim a specific chapter when there's nothing there to back it.
-        # Threshold is deliberately far below the 0.55 retry trigger so this
-        # only catches genuine noise, not merely a weak-but-real match.
-        top_rag_score = max((c["score"] for c in rag_chunks), default=0.0)
-        if matched_chapter and top_rag_score < 0.05:
+        # Gated on new_rag's own confidence_tier/status contract now, not a
+        # raw-score threshold (0.05 was tuned for the old 0-1 scale and is
+        # meaningless against new_rag's cross-encoder logit scale).
+        retrieval_confidence_tier = (retrieval_result or {}).get("confidence_tier")
+        if matched_chapter and retrieval_confidence_tier in ("INSUFFICIENT", None):
             print(
                 f"[CURRICULUM VALIDATION] matched_chapter '{matched_chapter}' has no real "
-                f"grounding (top RAG score {top_rag_score:.4f}) - clearing it so History/"
+                f"grounding (confidence_tier={retrieval_confidence_tier}) - clearing it so History/"
                 f"Firestore don't mislabel this turn under a chapter it doesn't belong to."
             )
             matched_chapter = None
             orchestrator_output["matched_chapter"] = None
+
+    # Grounding pass (docs/RAG_INTEGRATION_PLAN.md §4.2b, added 2026-08-21):
+    # runs BEFORE the restyle pass below - ground facts first, then restyle
+    # on top of the grounded text (presentation), matching the natural
+    # dependency between the two. Gated the same way the grounding-quality
+    # gate above already is, to avoid firing on weak/irrelevant retrieval and
+    # to avoid an unconditional extra LLM call on every single turn - only
+    # CURRICULUM turns with HIGH/MEDIUM confidence retrieval pay this cost.
+    grounding_applied = False
+    _narration_before_grounding = None
+    if (
+        classification == "CURRICULUM"
+        and rag_chunks
+        and (retrieval_result or {}).get("confidence_tier") in ("HIGH", "MEDIUM")
+        and orchestrator_output.get("text_narration")
+    ):
+        _narration_before_grounding = orchestrator_output["text_narration"]
+        grounded = ground_text_narration(orchestrator_output["text_narration"], rag_chunks, openai_client, MODEL)
+        if grounded and grounded != _narration_before_grounding:
+            orchestrator_output["text_narration"] = grounded
+            grounding_applied = True
 
     # Restyle pass (personalized_learning.md - real bug found via live log
     # analysis against class10_personalization_test_guide.md): asking the
@@ -966,7 +1076,19 @@ def run_orchestrator_pipeline(raw_query: str, student_profile: Dict[str, Any]) -
         # matched_subject+grade, or "" if this is GENERAL_KNOWLEDGE / resolution
         # failed. Callers (e.g. chat.py) should use THIS instead of whatever
         # book the student happens to have open, when triggering video generation.
-        "resolved_book_uuid": resolved_book_uuid
+        "resolved_book_uuid": resolved_book_uuid,
+        # Retrieval confidence contract + grounding-pass outcome, for the
+        # per-query debug record (docs/RAG_INTEGRATION_PLAN.md §9) - chat.py
+        # reads these to populate transaction_payload's "retrieval" and
+        # "grounding" blocks. None/False when RAG didn't execute at all
+        # (GENERAL_KNOWLEDGE turns).
+        "retrieval_status": (retrieval_result or {}).get("status"),
+        "retrieval_confidence_tier": (retrieval_result or {}).get("confidence_tier"),
+        "retrieval_top_score": (retrieval_result or {}).get("top_score"),
+        "retrieval_retried": (retrieval_result or {}).get("retried", False),
+        "retrieval_escalated_to_parent": (retrieval_result or {}).get("escalated_to_parent", False),
+        "grounding_applied": grounding_applied,
+        "narration_before_grounding": _narration_before_grounding if grounding_applied else None,
     }
 
     # Save Audit Report to test_outputs/

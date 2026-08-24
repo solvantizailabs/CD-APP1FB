@@ -698,8 +698,13 @@ async def smart_query_engine(
                         reformulated_query=out.get("reformulated_query", query),
                         mode="text",
                         llm_action=classification,
+                        format_decision=format_decision,
                         answer_length=len(text_script),
-                        query_json_url=None,
+                        # §9.2.D: reuse the ORIGINATING turn's debug JSON rather than
+                        # leaving this cache-hit turn's debug trail empty - populated
+                        # only for cache entries written after this field existed;
+                        # older entries fall back to None, same as before.
+                        query_json_url=cached.get("query_json_url"),
                         llm_response=text_script,
                         retrieved_sources=None,  # Cache hits don't execute a fresh search
                         storyboard_data={"scenes": cached_video_scenes} if cached_video_scenes else None,
@@ -964,6 +969,28 @@ async def smart_query_engine(
             query_id = f"q_{uuid.uuid4().hex[:8]}"
             
             # Construct unified transaction package
+            # Per-query debug record (docs/RAG_INTEGRATION_PLAN.md §9): this
+            # JSON, uploaded to Supabase below and linked back onto the
+            # Firestore query doc as query_json_url, is the single place to
+            # see everything about one answer - question, classification,
+            # every retrieved chunk's real text/score/confidence, what was
+            # actually sent to the model for grounding, and the final answer
+            # (before/after grounding, if it fired). Every field here is a
+            # direct pass-through of a value run_orchestrator_pipeline()
+            # already computed (see test_runner.py's report dict) - nothing
+            # is inferred or generated for the purpose of this record itself.
+            _retrieved_chunks_full = [
+                {
+                    "chunk_id": c.get("chunk_id"),
+                    "chunk_type": c.get("chunk_type"),
+                    "topic_name": c.get("topic_name"),
+                    "chapter_name": c.get("chapter_name"),
+                    "textbook_page": c.get("page_number"),
+                    "score": c.get("score"),
+                    "text": c.get("full_text", c.get("content_snippet", "")),
+                }
+                for c in report.get("retrieved_top10_chunks", [])
+            ]
             transaction_payload = {
                 "query_id": query_id,
                 "session_id": session["session_id"],
@@ -980,7 +1007,34 @@ async def smart_query_engine(
                 "media_urls": {
                     "interactive_url": interactive_url,
                     "storyboard_json_url": (updated_lesson_package or {}).get("storyboard_json_url") if updated_lesson_package else None
-                }
+                },
+                "retrieval": {
+                    "status": report.get("retrieval_status"),
+                    "confidence_tier": report.get("retrieval_confidence_tier"),
+                    "top_score": report.get("retrieval_top_score"),
+                    "retried": report.get("retrieval_retried", False),
+                    "escalated_to_parent": report.get("retrieval_escalated_to_parent", False),
+                    "resolved_book_uuid": report.get("resolved_book_uuid"),
+                    "matched_subject": out.get("matched_subject"),
+                    "matched_chapter": out.get("matched_chapter"),
+                },
+                "retrieved_chunks": _retrieved_chunks_full,
+                # The exact textbook context the grounding pass (test_runner.py
+                # ::ground_text_narration) was shown, when it ran - null if
+                # grounding didn't fire for this turn (GENERAL_KNOWLEDGE, no
+                # chunks, or confidence below HIGH/MEDIUM). Reconstructed here
+                # from the same top-6 chunks the grounding pass itself used,
+                # rather than plumbing the exact prompt string through the
+                # report, so this stays a faithful mirror of what was shown.
+                "context_sent_to_llm": (
+                    "\n\n---\n\n".join(c["text"] for c in _retrieved_chunks_full[:6] if c["text"])
+                    if report.get("grounding_applied") else None
+                ),
+                "grounding": {
+                    "applied": report.get("grounding_applied", False),
+                    "narration_before": report.get("narration_before_grounding"),
+                    "narration_after": text_script if report.get("grounding_applied") else None,
+                },
             }
             
             # Create local user history directory
@@ -1018,14 +1072,18 @@ async def smart_query_engine(
                     except Exception:
                         pass
 
-            # Register compiled query results to the global cache
+            # Register compiled query results to the global cache. Carries
+            # query_json_url forward (§9.2.D) so a future CACHE HIT on this
+            # entry still resolves to this turn's full debug record instead
+            # of an empty one.
             save_to_global_query_cache(
                 raw_query=query,
                 class_name=student_profile["class"],
                 subject=subject,
                 orchestrator_output=out,
                 interactive_url=interactive_url,
-                video_scenes=video_scenes_for_cache
+                video_scenes=video_scenes_for_cache,
+                query_json_url=query_json_url
             )
 
             # Save query turn to standard chat session manager
@@ -1124,6 +1182,7 @@ async def smart_query_engine(
                     reformulated_query=out.get("reformulated_query", query),
                     mode="text",
                     llm_action=classification,
+                    format_decision=format_decision,
                     answer_length=len(text_script),
                     query_json_url=query_json_url,
                     llm_response=text_script,

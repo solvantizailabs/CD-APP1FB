@@ -61,17 +61,36 @@ def resolve_page_sequence(pages: List[Dict]) -> List[Dict]:
                 resolved[i]["interpolated"] = True
 
     # Extrapolate before the first anchor / after the last anchor, bounded to
-    # immediate neighbors only (one page back/forward) - extrapolating far
-    # from a single anchor is exactly the failure mode this module exists to
-    # avoid, so this deliberately does not run unbounded.
+    # a small fixed window (not unbounded) - extrapolating far from a single
+    # anchor is exactly the failure mode this module exists to avoid.
+    #
+    # Widened from "one page only" to MAX_EDGE_EXTRAPOLATION pages (2026-08-22,
+    # found via real ingestion: NCERT chapters commonly open with 1-2 genuinely
+    # unnumbered pages - a title page and/or an unnumbered intro page - before
+    # the first printed footer appears; e.g. a real Class 10 Social Science
+    # chapter had its first confirmed page number on PDF page 3, leaving pages
+    # 1-2 unresolved and blocking Stage 1 entirely even though the correct
+    # values (first_v - 2, first_v - 1) are just as deterministic as the
+    # existing interior-gap-fill above, which already trusts the same +1-per-
+    # page arithmetic without hesitation). Still bounded, not unbounded: a
+    # chapter with more than MAX_EDGE_EXTRAPOLATION unnumbered leading/
+    # trailing pages is a genuinely different, riskier situation and should
+    # still fail validation and route to manual review rather than guess
+    # further from a single anchor.
+    MAX_EDGE_EXTRAPOLATION = 3
     first_i, first_v = anchors[0]
-    if first_i == 1 and resolved[0]["textbook_page"] is None:
-        resolved[0]["textbook_page"] = first_v - 1
-        resolved[0]["interpolated"] = True
+    for offset in range(1, min(first_i, MAX_EDGE_EXTRAPOLATION) + 1):
+        idx = first_i - offset
+        if resolved[idx]["textbook_page"] is None:
+            resolved[idx]["textbook_page"] = first_v - offset
+            resolved[idx]["interpolated"] = True
 
     last_i, last_v = anchors[-1]
-    if last_i == n - 2 and resolved[n - 1]["textbook_page"] is None:
-        resolved[n - 1]["textbook_page"] = last_v + 1
+    for offset in range(1, min(n - 1 - last_i, MAX_EDGE_EXTRAPOLATION) + 1):
+        idx = last_i + offset
+        if resolved[idx]["textbook_page"] is None:
+            resolved[idx]["textbook_page"] = last_v + offset
+            resolved[idx]["interpolated"] = True
         resolved[n - 1]["interpolated"] = True
 
     return resolved

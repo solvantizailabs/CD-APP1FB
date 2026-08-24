@@ -59,7 +59,22 @@ def _looks_like_non_chapter_content(first_page_text: str) -> bool:
 
 
 def _book_uuid_for(class_name: str, subject: str) -> str:
-    return str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{class_name}_{subject}_newrag".lower()))
+    """
+    Default book_uuid when no explicit override is passed (only the CLI ever
+    hits this path now - books.py always passes its own book_uuid, see
+    ingest_book()'s book_uuid parameter). Deliberately matches
+    books.py::batch_ingest_books()'s own formula EXACTLY
+    (uuid5(NAMESPACE_DNS, f"{class_name}_{subject}")) - this used to include
+    an extra "_newrag" suffix, which was the confirmed root cause of a real
+    production gap (2026-08-21): a book ingested via the standalone CLI
+    landed under a UUID the live app's Firestore-driven book resolution
+    could never discover, even though the actual chunk data was correct and
+    sitting in the same textbooks_v3 collection the whole time. Matching the
+    live app's formula here means a CLI test-ingestion and a live-app
+    ingestion of the same (class, subject) now agree on identity by
+    default - no separate discovery/remap step needed for future books.
+    """
+    return str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{class_name}_{subject}".lower()))
 
 
 def _find_enclosing_topic(pdf_page: int, resolved_pages: List[Dict], parents: List[Dict]) -> Optional[Dict]:
@@ -73,9 +88,25 @@ def _find_enclosing_topic(pdf_page: int, resolved_pages: List[Dict], parents: Li
     return None
 
 
+def _mirror_to_supabase(local_path: str) -> None:
+    """
+    Uploads an already-saved local artifact to Supabase Storage at the
+    identical relative path under the book-processing bucket, mirroring the
+    full local outputs/ hierarchy (integration plan §5.1: "does it make a
+    difference to the application? No - retrieval only ever reads
+    parents_lookup.json back. This is a durability add-on: without it, a
+    Render redeploy silently deletes raw pages/manifests/diagrams for every
+    book ingested since the last deploy.") Fail-open: upload_binary() never
+    raises, so this can be called unconditionally after every local save
+    without extra error handling at each call site.
+    """
+    dest = os.path.relpath(local_path, local_artifacts.OUTPUT_ROOT).replace(os.sep, "/")
+    supabase_artifacts.upload_binary(local_path, dest)
+
+
 def ingest_book(pdf_path: str, class_name: str, subject: str, chapter_name: Optional[str] = None,
                  start_pdf_page: int = 1, end_pdf_page: Optional[int] = None,
-                 model_name: str = "gpt-4o-mini") -> Dict:
+                 model_name: str = "gpt-4o-mini", book_uuid: Optional[str] = None) -> Dict:
     """
     Ingests one chapter (a pdf_page range within a PDF, defaulting to the
     whole PDF) through the full new pipeline. Returns a report dict
@@ -88,24 +119,34 @@ def ingest_book(pdf_path: str, class_name: str, subject: str, chapter_name: Opti
     authoritative chapter name. Nothing about naming a chapter needs a human
     to type it; a human override is only useful when the printed title is
     itself unhelpful or you want a different label for your own reference.
+
+    `book_uuid` is optional and only meant as an override - by default this
+    function derives its own deterministic UUID from (class_name, subject)
+    for standalone/CLI use. Production callers (backend/app/api/routes/
+    books.py) pass their own already-computed book_uuid explicitly here so
+    both the old textbooks_v2 and new textbooks_v3 collections agree on the
+    same book_uuid value for the same book, per the integration plan.
     """
-    book_uuid = _book_uuid_for(class_name, subject)
+    book_uuid = book_uuid or _book_uuid_for(class_name, subject)
     chapter_id = str(uuid.uuid4())
     source_stem = os.path.splitext(os.path.basename(pdf_path))[0]
     dir_path = local_artifacts.chapter_dir(class_name, subject, source_stem)
     report = {
         "book_uuid": book_uuid, "chapter_id": chapter_id, "chapter_name": chapter_name,
         "pdf_path": pdf_path, "source_stem": source_stem, "output_dir": dir_path, "stages": {},
+        "parent_chunks": [],
     }
 
     def _finish(status: str, message: str) -> Dict:
         report["status"] = status
         report["message"] = message
-        local_artifacts.save_json(dir_path, "00_status.json", report)
-        local_artifacts.update_book_index(class_name, subject, source_stem, {
+        status_path = local_artifacts.save_json(dir_path, "00_status.json", report)
+        _mirror_to_supabase(status_path)
+        index_path = local_artifacts.update_book_index(class_name, subject, source_stem, {
             "chapter_name": report.get("chapter_name"), "status": status,
             "message": message, "folder": os.path.basename(dir_path),
         })
+        _mirror_to_supabase(index_path)
         return report
 
     reader = PdfReader(pdf_path)
@@ -129,35 +170,66 @@ def ingest_book(pdf_path: str, class_name: str, subject: str, chapter_name: Opti
     report["stages"]["stage1_page_extraction"] = {
         "is_valid": is_valid_s1, "issues": issues_s1, "page_count": len(resolved_pages),
     }
-    local_artifacts.save_json(dir_path, "01_raw_pages.json", resolved_pages)
+    raw_pages_path = local_artifacts.save_json(dir_path, "01_raw_pages.json", resolved_pages)
+    _mirror_to_supabase(raw_pages_path)
 
     if not is_valid_s1:
         return _finish("blocked_stage1", "Page-sequence validation failed - routed to manual review, ingestion stopped.")
 
     # --- Stage 2: LLM topic segmentation with anchor boundaries ---
     openai_client = create_client()
-    try:
-        llm_result = call_llm_for_topics(openai_client, model_name, resolved_pages)
-    except Exception as e:
-        # Previously uncaught: an LLM failure here (timeout, context-length
-        # overflow, exhausted retries on a 429) propagated straight out of
-        # ingest_book and, in a folder upload, killed every chapter after
-        # it too (see cli.py's per-chapter try/except, added for the same
-        # reason). Converting it to a normal blocked status keeps this
-        # chapter's failure isolated and visible in chapter_info.json
-        # instead of a raw traceback.
-        logger.error(f"[NEW_RAG] Stage2 topic-detection LLM call failed for {source_stem!r}: {e}")
-        return _finish("failed_stage2_llm_error", f"Topic-detection LLM call failed: {e}")
     valid_pages = [p for p in resolved_pages if p.get("textbook_page") is not None]
     if not valid_pages:
         return _finish("blocked_stage1", "No pages with a resolved textbook_page in this range - nothing to segment.")
     chapter_end_page = max(p["textbook_page"] for p in valid_pages)
-    topic_result = resolve_topic_boundaries(resolved_pages, llm_result["topics"], chapter_end_page)
+
+    # Bounded retry (2026-08-21, found via real pilot testing - "AREAS RELATED
+    # TO CIRCLES" and "SURFACE AREAS AND VOLUMES" both hit blocked_stage2 on
+    # first attempt in a real 17-chapter batch run): the topic-detection LLM
+    # call is not perfectly deterministic even at temperature 0 (confirmed
+    # elsewhere in this pipeline's own testing notes - topic COUNT varies
+    # run to run), so a manifest that fails the coverage/anchor validation
+    # gate on one attempt can genuinely pass on a fresh attempt with no other
+    # change. One retry, same as the bounded-retry pattern already used at
+    # retrieval time (hybrid_retriever.py) - never silently loop forever,
+    # and a second consecutive failure is still routed to manual review, not
+    # papered over.
+    MAX_STAGE2_ATTEMPTS = 2
+    llm_result = None
+    topic_result = None
+    for attempt in range(1, MAX_STAGE2_ATTEMPTS + 1):
+        try:
+            llm_result = call_llm_for_topics(openai_client, model_name, resolved_pages)
+        except Exception as e:
+            # Previously uncaught: an LLM failure here (timeout, context-length
+            # overflow, exhausted retries on a 429) propagated straight out of
+            # ingest_book and, in a folder upload, killed every chapter after
+            # it too (see cli.py's per-chapter try/except, added for the same
+            # reason). Converting it to a normal blocked status keeps this
+            # chapter's failure isolated and visible in chapter_info.json
+            # instead of a raw traceback.
+            logger.error(f"[NEW_RAG] Stage2 topic-detection LLM call failed for {source_stem!r} (attempt {attempt}/{MAX_STAGE2_ATTEMPTS}): {e}")
+            return _finish("failed_stage2_llm_error", f"Topic-detection LLM call failed: {e}")
+
+        topic_result = resolve_topic_boundaries(resolved_pages, llm_result["topics"], chapter_end_page)
+        if topic_result["is_valid"]:
+            break
+        if attempt < MAX_STAGE2_ATTEMPTS:
+            logger.warning(
+                f"[NEW_RAG] Stage2 topic-manifest validation failed for {source_stem!r} "
+                f"(attempt {attempt}/{MAX_STAGE2_ATTEMPTS}) - retrying once before blocking."
+            )
+
     report["stages"]["stage2_topic_detection"] = topic_result
-    local_artifacts.save_json(dir_path, "02_topics_manifest.json", topic_result)
+    manifest_path = local_artifacts.save_json(dir_path, "02_topics_manifest.json", topic_result)
+    _mirror_to_supabase(manifest_path)
 
     if not topic_result["is_valid"]:
-        return _finish("blocked_stage2", "Topic-manifest validation failed - routed to manual review, ingestion stopped.")
+        return _finish(
+            "blocked_stage2",
+            f"Topic-manifest validation failed after {MAX_STAGE2_ATTEMPTS} attempts - "
+            f"routed to manual review, ingestion stopped."
+        )
 
     # Chapter name resolution: an explicit override always wins; otherwise
     # use the title the LLM read directly from the chapter's own content;
@@ -168,7 +240,8 @@ def ingest_book(pdf_path: str, class_name: str, subject: str, chapter_name: Opti
     report["chapter_name"] = chapter_name
     report["detected_chapter_title"] = detected_title
 
-    local_artifacts.save_chapter_markdown(dir_path, chapter_name, resolved_pages, topic_result["topics"])
+    overview_path = local_artifacts.save_chapter_markdown(dir_path, chapter_name, resolved_pages, topic_result["topics"])
+    _mirror_to_supabase(overview_path)
 
     # Chunking, diagram extraction/captioning, and table detection are each
     # individually resilient (see ingestion/pdf_parser.py), but the block as
@@ -205,7 +278,8 @@ def ingest_book(pdf_path: str, class_name: str, subject: str, chapter_name: Opti
             if not caption:
                 continue
             image_rel_path = f"05_diagrams/images/p{d['pdf_page']}_{d['image_name']}"
-            local_artifacts.save_binary(dir_path, image_rel_path, d["image_bytes"])
+            image_local_path = local_artifacts.save_binary(dir_path, image_rel_path, d["image_bytes"])
+            _mirror_to_supabase(image_local_path)
             diagram_chunks.append({
                 "chunk_id": str(uuid.uuid4()),
                 "parent_chunk_id": enclosing["parent_chunk_id"] if enclosing else None,
@@ -255,10 +329,14 @@ def ingest_book(pdf_path: str, class_name: str, subject: str, chapter_name: Opti
         # chunk type mixed together) made it hard to tell at a glance which
         # content came from which stage. Every filename below is prefixed
         # 04/05/06 to match pipeline order (see local_artifacts.py docstring).
-        local_artifacts.save_json(dir_path, "04_chunks/parent_chunks.json", parents)
-        local_artifacts.save_json(dir_path, "04_chunks/child_chunks.json", all_embeddable_chunks)
-        local_artifacts.save_json(dir_path, "05_diagrams/captions.json", diagram_chunks)
-        local_artifacts.save_json(dir_path, "06_tables.json", table_chunks)
+        parent_chunks_path = local_artifacts.save_json(dir_path, "04_chunks/parent_chunks.json", parents)
+        child_chunks_path = local_artifacts.save_json(dir_path, "04_chunks/child_chunks.json", all_embeddable_chunks)
+        captions_path = local_artifacts.save_json(dir_path, "05_diagrams/captions.json", diagram_chunks)
+        tables_path = local_artifacts.save_json(dir_path, "06_tables.json", table_chunks)
+        for saved_path in (parent_chunks_path, child_chunks_path, captions_path, tables_path):
+            _mirror_to_supabase(saved_path)
+
+        report["parent_chunks"] = parents
 
         all_embeddable_chunks.extend(diagram_chunks)
         all_embeddable_chunks.extend(table_chunks)

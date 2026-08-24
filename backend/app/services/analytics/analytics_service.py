@@ -84,6 +84,7 @@ def log_query(
     mode: str,
     llm_action: str,
     answer_length: int,
+    format_decision: Optional[str] = None,
     ai_difficulty_score: Optional[float] = None,
     query_json_url: Optional[str] = None,
     llm_response: Optional[str] = None,
@@ -135,6 +136,11 @@ def log_query(
             "chapter_name": chapter_name or "Unknown",
             "mode": mode,
             "llm_action": llm_action,
+            # §9.2.C (docs/RAG_INTEGRATION_PLAN.md): previously only reachable
+            # via the linked query_json_url JSON, not visible from a glance at
+            # the Firestore console itself - now a first-class field alongside
+            # llm_action/classification, same visibility level.
+            "format_decision": format_decision,
             "timestamp": firestore.SERVER_TIMESTAMP,
             "answer_length": answer_length,
             "retrieved_sources": retrieved_sources or [],

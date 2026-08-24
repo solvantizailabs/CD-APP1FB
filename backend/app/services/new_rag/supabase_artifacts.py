@@ -91,6 +91,63 @@ def upload_json(data: Any, destination_path: str) -> Optional[str]:
         return None
 
 
+_CONTENT_TYPES = {
+    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".json": "application/json", ".md": "text/markdown",
+}
+
+
+def upload_binary(local_path: str, destination_path: str) -> Optional[str]:
+    """
+    Uploads a local file (diagram images, chapter_overview.md, or any other
+    already-on-disk artifact) to Supabase Storage, mirroring the full local
+    outputs/ hierarchy so the durability guarantee upload_json() already
+    provides for parents_lookup.json extends to every other pipeline
+    artifact too (raw pages, manifests, diagrams) - see the integration
+    plan's "full artifact mirroring" decision. Content-type inferred from
+    extension. Same fail-open contract as upload_json(): returns None (never
+    raises) on any failure, so a Supabase hiccup never blocks ingestion -
+    the local copy always succeeds independently of this call.
+    """
+    supabase_url, supabase_key = get_supabase_config()
+    if not (supabase_url and supabase_key):
+        logger.warning("[NEW_RAG][Supabase] SUPABASE_URL/SUPABASE_KEY not configured - skipping upload.")
+        return None
+    if not os.path.exists(local_path):
+        logger.warning(f"[NEW_RAG][Supabase] Local file not found, skipping upload: {local_path}")
+        return None
+
+    destination_path = destination_path.lstrip("/")
+    url = f"{supabase_url}/storage/v1/object/{BUCKET_NAME}/{destination_path}"
+    ext = os.path.splitext(local_path)[1].lower()
+    content_type = _CONTENT_TYPES.get(ext, "application/octet-stream")
+    headers = {
+        "Authorization": f"Bearer {supabase_key}",
+        "apiKey": supabase_key,
+        "x-upsert": "true",
+        "Content-Type": content_type,
+    }
+
+    try:
+        with open(local_path, "rb") as f:
+            content = f.read()
+        with httpx.Client(timeout=30.0) as client:
+            resp = client.post(url, headers=headers, content=content)
+            if resp.status_code in (400, 404) and "not found" in resp.text.lower():
+                _ensure_bucket_exists(client, headers)
+                resp = client.post(url, headers=headers, content=content)
+
+            if resp.status_code in (200, 201):
+                public_url = f"{supabase_url}/storage/v1/object/public/{BUCKET_NAME}/{destination_path}"
+                logger.info(f"[NEW_RAG][Supabase] Uploaded {destination_path} -> {public_url}")
+                return public_url
+            logger.warning(f"[NEW_RAG][Supabase] Upload failed, status {resp.status_code}: {resp.text[:300]}")
+            return None
+    except Exception as e:
+        logger.warning(f"[NEW_RAG][Supabase] Upload exception for {destination_path}: {e}")
+        return None
+
+
 def download_json(destination_path: str) -> Optional[Any]:
     """
     Reads a JSON artifact back from Supabase Storage. The bucket is public

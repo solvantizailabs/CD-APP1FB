@@ -140,22 +140,170 @@ def collapse_repeated_runs(text: str) -> str:
     return text
 
 
+# Adobe Symbol-font Private Use Area mapping (2026-08-21, found via real
+# pilot ingestion: worked-example anchors in math-heavy chapters - circle
+# mensuration, trigonometry, statistics with formulas - consistently failed
+# Stage 2's verbatim anchor verification, even after a retry). Root cause,
+# confirmed by comparing raw extracted bytes against the LLM's transcription
+# of the same page: these NCERT PDFs embed math/Greek glyphs (π, °, Δ, ×,
+# ∠, etc.) using the legacy Adobe "Symbol" font encoding. pypdf's text
+# extraction, lacking a usable ToUnicode CMap for this font, falls back to
+# the PDF-extraction convention of remapping an unmapped glyph to the
+# Private Use Area at 0xF000 + the glyph's original Symbol-encoding code
+# point (confirmed live: raw text contained U+F070 exactly where "π" should
+# be - 0x70 is 'p', the Symbol-encoding slot for pi; U+F044 where "Δ" should
+# be - 0x44 is 'D', the Symbol-encoding slot for Delta). The LLM, reading the
+# page visually/from training familiarity, naturally transcribes the correct
+# real character, so anchor text can never match character-for-character
+# without this translation - not a retry-able failure, a deterministic one.
+#
+# First pass (this same day) only covered ~20 hand-picked entries and missed
+# a real production case: Statistics/Surface-Areas-and-Volumes use a much
+# wider slice of this font (capital Greek for summation notation, fraction/
+# bracket layout pieces, set/logic operators) - confirmed live via 30 more
+# distinct leftover codepoints found in real re-ingested chunks after the
+# first fix. This is now the FULL standard Adobe Symbol Encoding (PDF
+# Reference Appendix D / the PostScript Symbol font's documented encoding
+# vector - a fixed, decades-old standard, not a guess), covering every
+# printable slot 0x20-0x7E and the extended math/Greek/symbol block
+# 0xA0-0xF7. A handful of codes (0xE6-0xEF, 0xF8-0xFE) are deliberately
+# EXCLUDED, not guessed at: they are multi-piece bracket/brace-stretching
+# glyphs (the separate top/middle/bottom segments a PDF renderer uses to
+# draw one large curly brace or tall bracket around a stacked fraction) -
+# there is no single correct Unicode character for "the middle third of a
+# large bracket", so these are mapped to "" (removed) rather than
+# substituted with something wrong. Even after this, a genuinely
+# 2-dimensional layout (a fraction's numerator stacked over its
+# denominator) will still read somewhat run-together in plain extracted
+# text - that's a separate, deeper limitation of linear text extraction
+# from visually-laid-out math, not something a character-mapping table can
+# fix on its own.
+_SYMBOL_FONT_PUA_MAP = {
+    # --- Basic Latin range (0x20-0x7E): identity fallback for positions
+    # that are visually identical to plain ASCII (digits, most punctuation,
+    # space) - confirmed live this renderer routes those through the SAME
+    # 0xF000+code PUA convention too, not only the genuinely-different
+    # Symbol-encoding positions (Greek letters, math operators). Built
+    # programmatically below, then overridden by the explicit table for
+    # positions that actually differ from ASCII.
+    **{0xF000 + code: chr(code) for code in range(0x20, 0x7F)},
+    # --- Positions that differ from plain ASCII: Greek alphabet (occupies
+    # the Latin-letter slots in Symbol encoding) and a handful of math/logic
+    # operators in the punctuation range.
+    0xF022: "∀", 0xF024: "∃", 0xF027: "∋", 0xF02A: "∗", 0xF02D: "−",
+    0xF041: "Α", 0xF042: "Β", 0xF043: "Χ", 0xF044: "Δ", 0xF045: "Ε",
+    0xF046: "Φ", 0xF047: "Γ", 0xF048: "Η", 0xF049: "Ι", 0xF04A: "ϑ",
+    0xF04B: "Κ", 0xF04C: "Λ", 0xF04D: "Μ", 0xF04E: "Ν", 0xF04F: "Ο",
+    0xF050: "Π", 0xF051: "Θ", 0xF052: "Ρ", 0xF053: "Σ", 0xF054: "Τ",
+    0xF055: "Υ", 0xF056: "ς", 0xF057: "Ω", 0xF058: "Ξ", 0xF059: "Ψ",
+    0xF05A: "Ζ", 0xF05C: "∴", 0xF05E: "⊥",
+    0xF061: "α", 0xF062: "β", 0xF063: "χ", 0xF064: "δ", 0xF065: "ε",
+    0xF066: "φ", 0xF067: "γ", 0xF068: "η", 0xF069: "ι", 0xF06A: "ϕ",
+    0xF06B: "κ", 0xF06C: "λ", 0xF06D: "μ", 0xF06E: "ν", 0xF06F: "ο",
+    0xF070: "π", 0xF071: "θ", 0xF072: "ρ", 0xF073: "σ", 0xF074: "τ",
+    0xF075: "υ", 0xF076: "ϖ", 0xF077: "ω", 0xF078: "ξ", 0xF079: "ψ",
+    0xF07A: "ζ", 0xF07E: "∼",
+    # --- Extended math/symbol block (0xA0-0xF7) ---
+    0xF0A1: "ϒ", 0xF0A2: "′", 0xF0A3: "≤", 0xF0A4: "⁄", 0xF0A5: "∞",
+    0xF0A6: "ƒ", 0xF0A7: "♣", 0xF0A8: "♦", 0xF0A9: "♥", 0xF0AA: "♠",
+    0xF0AB: "↔", 0xF0AC: "←", 0xF0AD: "↑", 0xF0AE: "→", 0xF0AF: "↓",
+    0xF0B0: "°", 0xF0B1: "±", 0xF0B2: "″", 0xF0B3: "≥", 0xF0B4: "×",
+    0xF0B5: "∝", 0xF0B6: "∂", 0xF0B7: "•", 0xF0B8: "÷", 0xF0B9: "≠",
+    0xF0BA: "≡", 0xF0BB: "≈", 0xF0BC: "…", 0xF0BF: "↵",
+    0xF0C0: "ℵ", 0xF0C1: "ℑ", 0xF0C2: "ℜ", 0xF0C3: "℘", 0xF0C4: "⊗",
+    0xF0C5: "⊕", 0xF0C6: "∅", 0xF0C7: "∩", 0xF0C8: "∪", 0xF0C9: "⊃",
+    0xF0CA: "⊇", 0xF0CB: "⊄", 0xF0CC: "⊂", 0xF0CD: "⊆", 0xF0CE: "∈",
+    0xF0CF: "∉",
+    0xF0D0: "∠", 0xF0D1: "∇", 0xF0D2: "®", 0xF0D3: "©", 0xF0D4: "™",
+    0xF0D5: "∏", 0xF0D6: "√", 0xF0D7: "⋅", 0xF0D8: "¬", 0xF0D9: "∧",
+    0xF0DA: "∨", 0xF0DB: "⇔", 0xF0DC: "⇐", 0xF0DD: "⇑", 0xF0DE: "⇒",
+    0xF0DF: "⇓",
+    0xF0E5: "∑", 0xF0F2: "∫",
+    # Deliberately NOT mapped: 0xE6-0xEF and 0xF8-0xFE (bracket/brace/
+    # integral-sign STRETCH PIECES - top/middle/bottom segments of a large
+    # drawn bracket, not standalone characters). Handled below by removal.
+}
+_SYMBOL_FONT_STRETCH_PIECES = set(range(0xF0E6, 0xF0F0)) | set(range(0xF0F3, 0xF0FF))
+_SYMBOL_FONT_ALL_CODES = sorted(set(_SYMBOL_FONT_PUA_MAP) | _SYMBOL_FONT_STRETCH_PIECES)
+_SYMBOL_FONT_RE = re.compile("[" + "".join(chr(c) for c in _SYMBOL_FONT_ALL_CODES) + "]")
+
+
+def normalize_symbol_font_chars(text: str) -> str:
+    """Translates known Adobe Symbol-font PUA artifacts back to real Unicode
+    math/Greek characters, and removes the handful of bracket/integral
+    stretch-piece codes that have no single correct Unicode equivalent. See
+    module comment above for the confirmed root cause. Safe no-op on text
+    that doesn't contain any of these codepoints - only ever substitutes
+    exact, individually-confirmed mappings from the documented standard
+    Symbol encoding, never a blanket PUA-range guess."""
+    if not text:
+        return text
+    return _SYMBOL_FONT_RE.sub(lambda m: _SYMBOL_FONT_PUA_MAP.get(ord(m.group(0)), ""), text)
+
+
+# Decorative drop-cap / stylized-heading duplication artifact (2026-08-22,
+# found via real ingestion: a Class 10 Social Science chapter's "Rainwater
+# Harvesting" section heading extracted as "R RRRRAINWATER  H H H ARVESTING"
+# - confirmed by reading the raw extracted text directly). Some PDFs render
+# a section heading's leading letter as an oversized/stylized "drop cap"
+# using a layered or emboss/shadow font effect - pypdf's text extraction
+# then emits that one glyph several times in a row (with inconsistent
+# spacing between repeats) before the rest of the word continues normally.
+#
+# CONFIRMED DANGEROUS if matched too loosely: an earlier version of this
+# regex (same-letter, 3+ times, no other constraint) also matched genuine
+# Roman numerals - "World War III would be catastrophic." was silently
+# corrupted to "World War I would be catastrophic." on real Social Science
+# content, a real factual change, not a formatting nicety, caught before
+# this ever ran against real ingested data. Fixed with a lookahead requiring
+# the repeated run to be glued DIRECTLY (no space) into 2+ more letters with
+# no word boundary in between - the actual signature of the drop-cap
+# artifact (repeated letter immediately continuing into the rest of the same
+# word, e.g. "RRRR" + "AINWATER"). Refined further after testing: also
+# needed to catch the space-separated variant ("H H H ARVESTING"), but a
+# plain "letters follow" lookahead re-introduces the Roman-numeral risk
+# ("World War III would..." - "would" is also just letters). The signal
+# that actually distinguishes them: this artifact only ever happens inside
+# an all-caps decorative heading (confirmed: "RAINWATER HARVESTING" is
+# itself printed fully uppercase in the source), while a real Roman numeral
+# sits inside normal sentence-case prose - the word immediately after it
+# ("would", "is", "began"...) is always lowercase, never another run of
+# capital letters. Requiring the continuation to be UPPERCASE is what
+# safely tells "H H H ARVESTING" apart from "World War III would" - both
+# are structurally "repeated letter, then space, then more letters," so
+# this is the one piece of context that reliably distinguishes them.
+# "World War II" is separately safe regardless, since it only has 2
+# occurrences and this pattern requires 3+.
+_LETTER_STUTTER_RE = re.compile(r"\b([A-Z])(?:\s?\1){2,}(?=\s?[A-Z]{2,})")
+
+
+def collapse_letter_stutter(text: str) -> str:
+    """Collapses a decorative drop-cap letter-duplication artifact (e.g.
+    "R RRRRAINWATER" -> "RAINWATER") back to a single instance of the
+    repeated letter. See module comment above for the confirmed root cause."""
+    if not text:
+        return text
+    return _LETTER_STUTTER_RE.sub(lambda m: m.group(1), text)
+
+
 def extract_raw_pages(pdf_path: str) -> List[Dict]:
     """
     Extract raw text and a per-page detected textbook_page for every page in
     the PDF. `textbook_page` is None here where detection failed on that
     specific page - structure_parser.py::resolve_page_sequence fills those in
     by interpolation, it is not done inline here so the raw detection result
-    stays inspectable. Text is cleaned with collapse_repeated_runs() before
-    anything else sees it, since the duplication artifact it fixes otherwise
-    corrupts page-number detection, topic-heading anchors, AND general chunk
-    text quality all at once - cleaning once here benefits every downstream
-    stage.
+    stays inspectable. Text is cleaned with normalize_symbol_font_chars(),
+    collapse_letter_stutter(), and collapse_repeated_runs() before anything
+    else sees it, since all three artifacts otherwise corrupt page-number
+    detection, topic-heading anchors, AND general chunk text quality all at
+    once - cleaning once here benefits every downstream stage.
     """
     reader = PdfReader(pdf_path)
     pages = []
     for idx, page in enumerate(reader.pages):
-        text = collapse_repeated_runs(page.extract_text() or "")
+        text = normalize_symbol_font_chars(page.extract_text() or "")
+        text = collapse_letter_stutter(text)
+        text = collapse_repeated_runs(text)
         pages.append({
             "pdf_page": idx + 1,
             "text": text,

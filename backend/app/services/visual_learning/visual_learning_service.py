@@ -5,6 +5,7 @@ import asyncio
 import os
 import re
 from backend.app.services.retrieval import qdrant_service as qdrant
+from backend.app.services.retrieval import new_rag_adapter
 from backend.app.services.visual_learning.visual_lesson_prompt import get_visual_lesson_prompt
 from backend.app.services.visual_learning.asset_retrieval_service import retrieve_asset_url
 from backend.app.services.visual_learning.visual_audio_generator import generate_slide_audio
@@ -261,18 +262,30 @@ async def generate_visual_lesson_stream(query: str, book_uuid: str, class_name: 
             yield f"data: {json.dumps({'type': 'progress', 'step': 'understanding_topic', 'status': 'in_progress', 'message': 'Retrieving relevant textbook context...'})}\n\n"
             await asyncio.sleep(0.05)
 
+            # RAG process swap (2026-08-21, docs/RAG_INTEGRATION_PLAN.md §4.2):
+            # was qdrant.hybrid_search() (textbooks_v2) - found and fixed as a
+            # real gap the original swap missed (this file wasn't in the
+            # original call-site list, only test_runner.py/chat.py's /api/query
+            # were). video_book_uuid passed in by chat.py is the SAME
+            # resolved_book_uuid new_rag ingestion now writes under (see step 1's
+            # book_uuid override param), so no book_uuid mapping issue here.
             context = ""
             try:
-                hybrid_results, _, _ = qdrant.hybrid_search(
-                    book_uuid=book_uuid,
+                retrieval_result = new_rag_adapter.hybrid_search_v2(
                     query=query,
-                    keywords=[],
-                    conceptual_score=0.5,
-                    metadata_filters=None
+                    book_uuid=book_uuid,
+                    class_name=class_name,
+                    subject=subject,
                 )
-                if hybrid_results:
-                    context = "\n\n---\n\n".join([doc["text"] for score, doc in hybrid_results[:5]])
-                    logger.info(f"[VisualLearning] Retrieved {len(hybrid_results)} chunks for context.")
+                score_payload_pairs = retrieval_result["score_payload_pairs"]
+                if score_payload_pairs:
+                    context = "\n\n---\n\n".join(
+                        payload.get("text", "") for _score, payload in score_payload_pairs[:5]
+                    )
+                    logger.info(
+                        f"[VisualLearning] Retrieved {len(score_payload_pairs)} chunks for context "
+                        f"(confidence_tier={retrieval_result.get('confidence_tier')})."
+                    )
                 else:
                     logger.warning("[VisualLearning] No chunks retrieved. Using query context only.")
             except Exception as e:
