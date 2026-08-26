@@ -1,14 +1,25 @@
 """
-End-to-end ingestion pipeline for the new_rag standalone test tool.
-Orchestrates Stage 1 -> Stage 2 -> chunking -> table/diagram extraction ->
-embedding/storage. See docs/RAG_REDESIGN_PLAN.md.
+End-to-end ingestion pipeline, orchestrating Stage 1 -> Stage 2 -> chunking
+-> table/diagram extraction -> embedding/storage. See
+docs/RAG_REDESIGN_PLAN.md.
 
-This is deliberately additive/parallel to the existing production ingestion
-in backend/app/api/routes/books.py - nothing here is imported by or modifies
-that file, the live app, the orchestrator, or personalization. It writes
-only to the new textbooks_v3 Qdrant collection and to local disk under
-backend/app/services/new_rag/outputs/ (local disk is a deliberate choice for
-THIS test tool only - see local_artifacts.py docstring).
+STALE-COMMENT CORRECTION (2026-08-25): this module's docstring used to say
+it was "additive/parallel" to production and "nothing here is imported by
+... the live app" - that was true when this pipeline was first built as a
+standalone tool, but is no longer accurate. Since the RAG process swap (see
+docs/RAG_INTEGRATION_PLAN.md), backend/app/api/routes/books.py imports and
+calls ingest_book() (below) directly for every real book upload - this IS
+the live production ingestion path, not a parallel/test one. It writes to
+the real textbooks_v3 Qdrant collection (what chat.py's retrieval actually
+reads, via new_rag_adapter.py) and to local disk under
+backend/app/services/new_rag/outputs/ (local disk is a durability
+convenience/inspection copy only - Supabase Storage, via
+supabase_artifacts.py, is the durable copy the live app can actually rely
+on surviving a redeploy; see local_artifacts.py's own corrected docstring).
+
+The standalone/test-only tooling that still exists in this package is
+cli.py and answer_test.py specifically (both explicitly documented as
+such, genuinely never imported by books.py/chat.py) - not this file.
 """
 import logging
 import os
@@ -18,10 +29,12 @@ from typing import Dict, List, Optional
 from pypdf import PdfReader
 
 from backend.app.services.new_rag.ingestion.pdf_parser import (
-    extract_raw_pages, extract_diagram_images, caption_diagram_image, detect_table_candidates,
+    extract_raw_pages, extract_diagram_images, extract_vector_diagram_regions, caption_diagram_image,
+    detect_table_candidates, flag_boilerplate_images,
 )
 from backend.app.services.new_rag.ingestion.structure_parser import (
     resolve_page_sequence, validate_page_sequence, call_llm_for_topics, resolve_topic_boundaries,
+    attach_reading_order_warnings,
 )
 from backend.app.services.new_rag.ingestion.chunker import (
     build_parent_chunks, build_child_chunks, PARENT_SOFT_CEILING_TOKENS, metadata_fields,
@@ -88,7 +101,7 @@ def _find_enclosing_topic(pdf_page: int, resolved_pages: List[Dict], parents: Li
     return None
 
 
-def _mirror_to_supabase(local_path: str) -> None:
+def _mirror_to_supabase(local_path: str) -> Optional[str]:
     """
     Uploads an already-saved local artifact to Supabase Storage at the
     identical relative path under the book-processing bucket, mirroring the
@@ -99,9 +112,16 @@ def _mirror_to_supabase(local_path: str) -> None:
     book ingested since the last deploy.") Fail-open: upload_binary() never
     raises, so this can be called unconditionally after every local save
     without extra error handling at each call site.
+
+    Returns the Supabase public URL on success, None on failure - most
+    callers still ignore this (mirroring is fire-and-forget for them), but
+    diagram-image callers need the real URL to store in a chunk's
+    structured_content, since a local disk path isn't fetchable by anything
+    downstream (a different process, a redeploy, or a future generation-time
+    image fetch).
     """
     dest = os.path.relpath(local_path, local_artifacts.OUTPUT_ROOT).replace(os.sep, "/")
-    supabase_artifacts.upload_binary(local_path, dest)
+    return supabase_artifacts.upload_binary(local_path, dest)
 
 
 def ingest_book(pdf_path: str, class_name: str, subject: str, chapter_name: Optional[str] = None,
@@ -167,8 +187,17 @@ def ingest_book(pdf_path: str, class_name: str, subject: str, chapter_name: Opti
 
     resolved_pages = resolve_page_sequence(chapter_pages)
     is_valid_s1, issues_s1 = validate_page_sequence(resolved_pages)
+    attach_reading_order_warnings(resolved_pages)
+    reading_order_warning_count = sum(1 for p in resolved_pages if p["reading_order_warnings"])
+    if reading_order_warning_count:
+        logger.warning(
+            f"[NEW_RAG] Stage1 reading-order warnings on {reading_order_warning_count} page(s) "
+            f"of {source_stem!r} - non-blocking, see 01_raw_pages.json per-page "
+            f"'reading_order_warnings' for detail."
+        )
     report["stages"]["stage1_page_extraction"] = {
         "is_valid": is_valid_s1, "issues": issues_s1, "page_count": len(resolved_pages),
+        "reading_order_warning_page_count": reading_order_warning_count,
     }
     raw_pages_path = local_artifacts.save_json(dir_path, "01_raw_pages.json", resolved_pages)
     _mirror_to_supabase(raw_pages_path)
@@ -267,21 +296,92 @@ def ingest_book(pdf_path: str, class_name: str, subject: str, chapter_name: Opti
         # {context_block}.
         openai_raw_client = get_openai_client()
         raw_diagrams = extract_diagram_images(pdf_path, start_pdf_page, end_pdf_page)
-        diagram_chunks = []
-        for d in raw_diagrams:
-            enclosing = _find_enclosing_topic(d["pdf_page"], resolved_pages, parents)
-            caption = caption_diagram_image(
-                openai_raw_client, d["image_bytes"], d["image_format"],
-                chapter_name=chapter_name,
-                topic_name=enclosing["topic_name"] if enclosing else None,
+        # Vector-drawn diagrams (factor trees, geometric figures - built from
+        # PDF drawing operators, not an embedded image object) are structurally
+        # invisible to the raster extraction above - confirmed live against
+        # jemh101.pdf (Class 10 Maths). extract_vector_diagram_regions() finds
+        # them via the page's actual vector primitives and returns them in the
+        # exact same dict shape as raster results, so they flow through the
+        # SAME boilerplate/is_content/captioning pipeline below unchanged -
+        # verified live that the existing is_content classifier alone
+        # correctly separates the real diagrams this finds (a factor tree, a
+        # formula box) from the false positives its cruder "enough vector
+        # shapes clustered together" heuristic inevitably also picks up (a
+        # chapter title banner, stray boxed-formula text fragments) - no new
+        # downstream logic needed.
+        vector_diagrams = extract_vector_diagram_regions(pdf_path, start_pdf_page, end_pdf_page)
+        raw_diagrams = raw_diagrams + vector_diagrams
+        raw_diagrams = flag_boilerplate_images(raw_diagrams, total_pages=len(valid_pages))
+        boilerplate_count = sum(1 for d in raw_diagrams if d["is_boilerplate"])
+        if boilerplate_count:
+            logger.info(
+                f"[NEW_RAG][Stage5] Excluded {boilerplate_count}/{len(raw_diagrams)} extracted "
+                f"images as recurring page-furniture (watermark/margin icon) for {source_stem!r} - "
+                f"never captioned, never chunked."
             )
+
+        # Caches, keyed by image_hash, so a real illustration that's
+        # deliberately reused more than once in the same chapter (below the
+        # boilerplate threshold - see flag_boilerplate_images) gets ONE
+        # caption call and ONE saved/uploaded file, reused for every
+        # occurrence, rather than a fresh (and potentially inconsistent)
+        # caption + duplicate upload per repeat.
+        caption_cache: Dict[str, str] = {}
+        image_url_cache: Dict[str, str] = {}
+        diagram_chunks = []
+        # chunk_id -> raw image bytes, kept only for Stage 2's image-vector
+        # embedding right below (CLIP needs pixels, not the caption) - not
+        # persisted anywhere, thrown away once this chapter's ingest_book()
+        # call returns.
+        diagram_image_bytes: Dict[str, bytes] = {}
+        non_content_count = 0
+        for d in raw_diagrams:
+            if d["is_boilerplate"]:
+                continue
+
+            enclosing = _find_enclosing_topic(d["pdf_page"], resolved_pages, parents)
+            image_hash = d["image_hash"]
+
+            if image_hash in caption_cache:
+                caption_result = caption_cache[image_hash]
+            else:
+                caption_result = caption_diagram_image(
+                    openai_raw_client, d["image_bytes"], d["image_format"],
+                    chapter_name=chapter_name,
+                    topic_name=enclosing["topic_name"] if enclosing else None,
+                )
+                caption_cache[image_hash] = caption_result
+            caption = caption_result["caption"]
             if not caption:
                 continue
-            image_rel_path = f"05_diagrams/images/p{d['pdf_page']}_{d['image_name']}"
-            image_local_path = local_artifacts.save_binary(dir_path, image_rel_path, d["image_bytes"])
-            _mirror_to_supabase(image_local_path)
+            # Second, independent filter alongside is_boilerplate - catches
+            # page furniture the hash-based filter structurally can't (a
+            # one-off title banner or QR code that only ever appears once
+            # in the chapter, so it never had a chance to look "recurring").
+            # See caption_diagram_image()'s docstring for why this stays
+            # separate from the boilerplate check rather than replacing it.
+            if not caption_result["is_content"]:
+                non_content_count += 1
+                continue
+
+            if image_hash in image_url_cache:
+                image_location = image_url_cache[image_hash]
+            else:
+                image_rel_path = f"05_diagrams/images/p{d['pdf_page']}_{d['image_name']}"
+                image_local_path = local_artifacts.save_binary(dir_path, image_rel_path, d["image_bytes"])
+                # Prefer the real, fetchable Supabase URL - a local relative
+                # path isn't reachable by anything downstream (a different
+                # process, a Render redeploy, or a future generation-time
+                # image fetch). Fall back to the local path only if the
+                # Supabase upload itself failed, so structured_content is
+                # never silently None.
+                image_location = _mirror_to_supabase(image_local_path) or image_rel_path
+                image_url_cache[image_hash] = image_location
+
+            new_chunk_id = str(uuid.uuid4())
+            diagram_image_bytes[new_chunk_id] = d["image_bytes"]
             diagram_chunks.append({
-                "chunk_id": str(uuid.uuid4()),
+                "chunk_id": new_chunk_id,
                 "parent_chunk_id": enclosing["parent_chunk_id"] if enclosing else None,
                 "chapter_id": chapter_id,
                 "chapter_name": chapter_name,
@@ -289,13 +389,21 @@ def ingest_book(pdf_path: str, class_name: str, subject: str, chapter_name: Opti
                 "topic_name": enclosing["topic_name"] if enclosing else None,
                 "chunk_type": "diagram",
                 "text": caption,
-                "structured_content": image_rel_path,
+                "structured_content": image_location,
                 "token_count": len(caption.split()),
                 "start_page": d["pdf_page"],
                 "end_page": d["pdf_page"],
                 **metadata_fields(chapter_name, enclosing["topic_name"] if enclosing else None,
                                    "diagram", d["pdf_page"]),
             })
+
+        if non_content_count:
+            logger.info(
+                f"[NEW_RAG][Stage5] Excluded {non_content_count} extracted image(s) as "
+                f"page furniture (title banner/QR code/decorative icon, per the caption "
+                f"model's own is_content classification) for {source_stem!r} - captioned "
+                f"but never chunked."
+            )
 
         table_chunks = []
         for page in resolved_pages:
@@ -398,6 +506,35 @@ def ingest_book(pdf_path: str, class_name: str, subject: str, chapter_name: Opti
         # this chapter with no chance to isolate or retry per-chapter.
         logger.error(f"[NEW_RAG] Stage6 embedding/upsert failed for {source_stem!r}: {e}")
         return _finish("failed_stage6_embedding_error", f"Embedding/upsert failed: {e}")
+
+    # --- Stage 7: image-vector embedding (docs/IMAGE_PIPELINE_PLAN.md
+    # section 3) - a separate collection from textbooks_v3, purely additive
+    # to what Stage 6 already did. Deliberately non-fatal: this chapter's
+    # text/caption retrieval (the core of the app) already fully succeeded
+    # above, so a failure here (e.g. the local CLIP model failing to load)
+    # must not turn an otherwise-successful ingestion into a failure - it
+    # only means this one chapter has no image-vector search until a retry,
+    # same "degrade, don't fail" contract as the other per-stage guards in
+    # this function.
+    image_vectors_upserted = 0
+    if diagram_chunks:
+        try:
+            import io
+            from PIL import Image
+            from backend.app.services.new_rag.embeddings.image_embedding_service import embed_images
+            from backend.app.services.new_rag.indexing.image_indexer import upsert_diagram_images
+
+            pil_images = [Image.open(io.BytesIO(diagram_image_bytes[c["chunk_id"]])).convert("RGB")
+                          for c in diagram_chunks]
+            image_vectors = embed_images(pil_images)
+            image_vectors_upserted = upsert_diagram_images(
+                client, diagram_chunks, image_vectors, book_uuid, class_name, subject,
+            )
+        except Exception as e:
+            logger.error(f"[NEW_RAG] Stage7 image-vector embedding failed for {source_stem!r} "
+                         f"(non-fatal - text/caption retrieval is unaffected): {e}")
+
+    report["stages"]["image_embedding"] = {"vectors_upserted": image_vectors_upserted}
 
     return _finish("ingested", (
         f"Ingested {upserted} chunks ({len(parents)} topics, "

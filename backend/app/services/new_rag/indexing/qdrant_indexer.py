@@ -2,8 +2,14 @@
 Qdrant storage for the new RAG pipeline. See docs/RAG_REDESIGN_PLAN.md,
 section 7.
 
-Locked decision: a brand new collection (textbooks_v3), never touching the
-existing textbooks_v2 collection the live app still serves from.
+Locked decision at the time this was built: a brand new collection
+(textbooks_v3), never touching the then-existing textbooks_v2 collection.
+STALE NOTE, corrected 2026-08-25: textbooks_v2 was the live collection only
+until the RAG process swap (see docs/RAG_INTEGRATION_PLAN.md) - since then
+textbooks_v3 (this module) IS what the live app serves from. books.py's
+ingestion and chat.py's retrieval (via new_rag_adapter.py ->
+retrieval/hybrid_retriever.py) both read/write here directly; textbooks_v2
+is legacy, not the active production collection.
 """
 import os
 import logging

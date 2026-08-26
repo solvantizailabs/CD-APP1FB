@@ -1,0 +1,25 @@
+{
+  "timestamp": "20260826T043440Z",
+  "files": [
+    "D:\\ncret books\\class-10\\maths\\jemh101.pdf"
+  ],
+  "class_name": "10",
+  "subject": "maths",
+  "status": {
+    "subject": "maths",
+    "book_uuid": "6533c9be-f65c-5636-bce3-7d669f3cfcd4",
+    "completed_at": "2026-08-26T04:34:37.401000+00:00",
+    "class_name": "10",
+    "status": "completed",
+    "results": [
+      {
+        "chapter_name": "REAL NUMBERS",
+        "status": "ingested",
+        "filename": "jemh101.pdf",
+        "new_rag_chapter_id": "b36a9c52-d292-49dc-86c7-d5cc235233d5"
+      }
+    ],
+    "total_chapters": 1,
+    "started_at": "2026-08-26T04:32:28.207000+00:00"
+  }
+}

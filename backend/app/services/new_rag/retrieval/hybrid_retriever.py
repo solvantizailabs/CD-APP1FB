@@ -129,6 +129,40 @@ def compute_confidence_tier(candidates: List[Dict], top_score: Optional[float]) 
     return "INSUFFICIENT"
 
 
+def _image_augmented_chunk_ids(query: str, book_uuid: str, chapter_id: Optional[str], limit: int = 5) -> List[str]:
+    """
+    Cross-modal widening (docs/IMAGE_PIPELINE_PLAN.md section 3.4/9.1): finds
+    diagrams whose IMAGE is visually relevant to the query even when their
+    caption's wording doesn't semantically match it - the dense+sparse
+    search in _hybrid_search_once only ever finds a diagram via its caption
+    text; this is a second, independent discovery signal against the same
+    diagram's actual pixels (textbook_diagrams_v1, CLIP embeddings).
+
+    Returns chunk_ids only, not full candidates - the caller fetches each
+    one's real payload from textbooks_v3 by ID, so every candidate that
+    reaches dedup/rerank has the identical payload shape (chunk_type, text,
+    structured_content, ...) regardless of which search found it, rather
+    than mixing in image_indexer's narrower collection schema.
+
+    Fails open (returns []) rather than raising - image-vector widening is
+    an enhancement on top of retrieval that already worked before Stage 2
+    existed; a missing/broken image collection (e.g. a book ingested before
+    Stage 2 was built) must never block or degrade the core text/caption
+    search above.
+    """
+    try:
+        from backend.app.services.new_rag.embeddings.image_embedding_service import embed_text_query
+        from backend.app.services.new_rag.indexing import image_indexer
+
+        client = image_indexer.get_qdrant_client()
+        query_vector = embed_text_query(query)
+        hits = image_indexer.search_images(client, query_vector, book_uuid, chapter_id=chapter_id, limit=limit)
+        return [h["payload"]["chunk_id"] for h in hits if h["payload"].get("chunk_id")]
+    except Exception as e:
+        logger.warning(f"[NEW_RAG][Retrieval] Image-vector search skipped (non-fatal): {e}")
+        return []
+
+
 def _hybrid_search_once(client, openai_client, query: str, book_uuid: str,
                          chapter_id: Optional[str] = None, topic_id: Optional[str] = None) -> List[Dict]:
     query_filter = build_filter(book_uuid, chapter_id=chapter_id, topic_id=topic_id)
@@ -143,7 +177,34 @@ def _hybrid_search_once(client, openai_client, query: str, book_uuid: str,
         limit=INITIAL_TOP_K,
         with_payload=True,
     )
-    return [{"payload": p.payload, "fusion_score": p.score} for p in result.points]
+    candidates = [{"payload": p.payload, "fusion_score": p.score} for p in result.points]
+
+    # Stage 2 image-vector widening - only ADDS diagrams missing from the
+    # pool above, never re-scores or reorders what fusion already found.
+    # Final order is still decided entirely by the cross-encoder reranker in
+    # retrieve() just below, which scores every candidate's actual text
+    # uniformly regardless of which search found it - so this never needs
+    # to compare CLIP's image-similarity score against textbooks_v3's
+    # fusion score directly (those scales are not comparable, see
+    # docs/IMAGE_PIPELINE_PLAN.md section 3.1).
+    existing_ids = {c["payload"].get("chunk_id") for c in candidates}
+    image_chunk_ids = [cid for cid in _image_augmented_chunk_ids(query, book_uuid, chapter_id)
+                        if cid not in existing_ids]
+    if image_chunk_ids:
+        fetched = client.retrieve(collection_name=COLLECTION_NAME, ids=image_chunk_ids, with_payload=True)
+        # No real fusion score exists for a candidate fusion never found -
+        # deliberately set to the pool's own minimum rather than 0 or a
+        # guess, so it never LOOKS like it competed well in the fusion
+        # stage (compute_confidence_tier's HIGH-tier agreement check
+        # correctly never counts an image-only find), while still being
+        # fully eligible for reranking just below.
+        min_fusion_score = min((c["fusion_score"] for c in candidates), default=0.0)
+        for point in fetched:
+            candidates.append({"payload": point.payload, "fusion_score": min_fusion_score, "found_via": "image_vector"})
+        logger.info(f"[NEW_RAG][Retrieval] Image-vector search added {len(fetched)} diagram(s) "
+                    f"not found by text/caption search.")
+
+    return candidates
 
 
 def _load_parents_lookup(class_name: str, subject: str) -> Dict:
@@ -194,11 +255,39 @@ def _maybe_escalate_to_parent(top_children: List[Dict], class_name: str, subject
     threshold = max(1, round(top_k * PARENT_ESCALATION_MIN_SHARE_RATIO))
     qualifying_parent_ids = [pid for pid, count in parent_counts.most_common() if count >= threshold]
 
+    # Full per-parent vote breakdown (2026-08-25, added for debugging
+    # visibility per user request): every distinct parent topic among top_n,
+    # its vote count, and whether it cleared the threshold - not just the
+    # winner(s). Confirmed live this matters: a real split like 6/3/1 across
+    # three parent topics only lets the 6-group escalate; the 3-group and
+    # the 1-group are otherwise invisible in the output even though they're
+    # a meaningful chunk of the evidence the reranker considered. Returned
+    # on every path (escalated or not) so a caller can always see the full
+    # picture, not just the outcome.
+    topic_names_by_pid = {c["payload"]["parent_chunk_id"]: c["payload"].get("topic_name")
+                           for c in top_n}
+    parent_vote_breakdown = [
+        {
+            "parent_chunk_id": pid,
+            "topic_name": topic_names_by_pid.get(pid),
+            "vote_count": count,
+            "share": f"{count}/{len(top_n)}",
+            "qualifies_for_escalation": count >= threshold,
+        }
+        for pid, count in parent_counts.most_common()
+    ]
+
     if not qualifying_parent_ids:
-        return {"escalated": False, "chunks": top_n, "child_candidates": top_n}
+        for c in top_n:
+            c["level"] = "child"
+        return {
+            "escalated": False, "chunks": top_n, "child_candidates": top_n,
+            "parent_vote_breakdown": parent_vote_breakdown, "escalation_threshold_count": threshold,
+        }
 
     parents_lookup = _load_parents_lookup(class_name, subject)
     escalated_chunks = []
+    covered_parent_ids = set()
     for pid in qualifying_parent_ids:
         parent = parents_lookup.get(pid)
         if not parent:
@@ -208,11 +297,132 @@ def _maybe_escalate_to_parent(top_children: List[Dict], class_name: str, subject
         escalated_chunks.append({
             "payload": parent,
             "rerank_score": best_child_score,
+            "level": "parent",
             "note": f"escalated to full parent topic ({parent_counts[pid]}/{len(top_n)} of top results)",
+        })
+        covered_parent_ids.add(pid)
+
+        # Bug fix (2026-08-25, found via live testing - docs/IMAGE_PIPELINE_PLAN.md):
+        # escalation used to swap EVERY child under this parent for the parent's
+        # plain text, silently discarding any diagram chunk that was part of the
+        # escalated group - including cases where the diagram was the single
+        # highest-scoring candidate of the whole search. The parent's own text
+        # never contains the image itself (diagrams are separate chunk_type
+        # entries, not inlined into parent text), so escalating to parent text
+        # is not a superset of a diagram child - it's a genuine loss. Re-attach
+        # any diagram chunk(s) that were part of THIS parent's escalated group,
+        # alongside the escalated parent text, so ground_text_narration() still
+        # has a real image to attach at generation time. Deduped by chunk_id in
+        # case the same diagram appears more than once in top_n.
+        #
+        # Bug fix (2026-08-25, found via live testing against a real question -
+        # jess101.pdf, "What does the diagram that classifies resources into
+        # renewable and non-renewable types show?"): re-attachment used to pull
+        # in EVERY diagram under the escalated parent regardless of that
+        # diagram's own score - confirmed live this flooded results with junk
+        # (a QR code, a decorative title banner, both scoring -8 to -11) purely
+        # because they shared a parent topic with the winning group, not
+        # because any of them were individually relevant to the question.
+        # Checked docs/IMAGE_PIPELINE_PLAN.md and friends first (per user
+        # request) - no relevance floor for this was ever documented, so this
+        # isn't a fix to a documented gap, it's new ground, designed to match
+        # the existing documented philosophy that image-vector search only
+        # ever WIDENS the candidate pool and never gets treated as
+        # automatically authoritative (IMAGE_PIPELINE_PLAN.md section 3.4).
+        # Reuses LOW_THRESHOLD (already calibrated for confidence tiering
+        # elsewhere in this file) rather than inventing a new constant - a
+        # diagram must clear at least LOW confidence on its own merits, not
+        # just share a parent with chunks that do.
+        seen_diagram_ids = set()
+        for c in top_n:
+            p = c["payload"]
+            if p.get("parent_chunk_id") != pid or p.get("chunk_type") != "diagram":
+                continue
+            if c["rerank_score"] < LOW_THRESHOLD:
+                continue
+            cid = p.get("chunk_id")
+            if cid in seen_diagram_ids:
+                continue
+            seen_diagram_ids.add(cid)
+            c["level"] = "child"
+            escalated_chunks.append(c)
+
+    # Bug fix (2026-08-25, found via live testing against a real question -
+    # jess101.pdf, "What is sustainable development, and what was agreed at
+    # the 1992 Rio de Janeiro Earth Summit?"): the single highest-scoring
+    # candidate in the ENTIRE pool (rerank_score +5.03, genuinely the right
+    # answer) was silently discarded because it was the only one of its
+    # parent topic in top_n - a different, mostly-irrelevant topic
+    # ("Introduction", best score -9.7, padded out by low-value diagram
+    # chunks like a QR code and a decorative title banner) won the
+    # majority-vote-by-COUNT threshold purely by outnumbering it 6-to-1, with
+    # no check on whether that winning group's own scores were any good.
+    # The escalated result ended up entirely composed of chunks scoring
+    # -9.7 to -11, while the one candidate that actually answered the
+    # question vanished - and the top-level `top_score` returned to the
+    # caller (computed from the pre-escalation pool) kept reporting +5.03
+    # regardless, making the mismatch invisible until the actual chunks were
+    # inspected. A majority vote by raw count, with no score-quality floor
+    # and no protection for the single best match, is not a safe way to
+    # decide what real content to discard - so the top candidate is never
+    # dropped silently, regardless of whether its own parent won the vote.
+    top_candidate = top_n[0]
+    kept_chunk_ids = set()
+    if top_candidate["payload"].get("parent_chunk_id") not in covered_parent_ids:
+        escalated_chunks.append({
+            **top_candidate,
+            "level": "child",
+            "note": "kept: highest-scoring candidate in the full pool, retained even though "
+                    "its parent topic didn't reach the majority-vote escalation threshold",
+        })
+        if top_candidate["payload"].get("chunk_id"):
+            kept_chunk_ids.add(top_candidate["payload"]["chunk_id"])
+
+    # Bug fix (2026-08-25, found via live testing against the SAME question
+    # above, one position deeper): the fix just above only protects the
+    # single #1 candidate - confirmed live this wasn't enough. Candidate #2
+    # in that same pool (rerank_score +2.72, "Land Utilisation" topic - the
+    # genuinely relevant content that used to be misplaced there by the
+    # since-fixed page-4 column bug) was STILL silently dropped: it isn't
+    # the #1 overall, and its own topic only got 1/10 votes, so it qualifies
+    # for neither protection. It vanished while the "winning" Introduction
+    # group - entirely scoring ~-9.7 to -11, essentially zero relevance -
+    # took its place. Special-casing only position #1 was never going to
+    # generalize to position #2, #3, etc. Generalizing this properly: ANY
+    # candidate whose own score clears MEDIUM_THRESHOLD (already calibrated
+    # for confidence tiering elsewhere in this file - reused, not a new
+    # constant) is protected the same way #1 already was, regardless of its
+    # rank or which parent it belongs to. Deliberately does NOT extend this
+    # same guarantee to top_candidate itself (kept unconditional above,
+    # regardless of its own score) - that guarantee predates this fix and
+    # stays as-is, this only widens protection to cover strong matches
+    # beyond just the single best one.
+    for c in top_n[1:]:
+        p = c["payload"]
+        if p.get("parent_chunk_id") in covered_parent_ids:
+            continue
+        if c["rerank_score"] < MEDIUM_THRESHOLD:
+            continue
+        cid = p.get("chunk_id")
+        if cid and cid in kept_chunk_ids:
+            continue
+        if cid:
+            kept_chunk_ids.add(cid)
+        escalated_chunks.append({
+            **c,
+            "level": "child",
+            "note": f"kept: score {c['rerank_score']:.2f} clears the relevance floor "
+                    f"(MEDIUM_THRESHOLD={MEDIUM_THRESHOLD}) even though its parent topic "
+                    f"didn't win the majority-vote escalation threshold",
         })
 
     if not escalated_chunks:
-        return {"escalated": False, "chunks": top_n, "child_candidates": top_n}
+        for c in top_n:
+            c["level"] = "child"
+        return {
+            "escalated": False, "chunks": top_n, "child_candidates": top_n,
+            "parent_vote_breakdown": parent_vote_breakdown, "escalation_threshold_count": threshold,
+        }
 
     escalated_chunks.sort(key=lambda c: c["rerank_score"], reverse=True)
     return {
@@ -221,6 +431,8 @@ def _maybe_escalate_to_parent(top_children: List[Dict], class_name: str, subject
         "escalated_parent_count": len(escalated_chunks),
         "chunks": escalated_chunks,
         "child_candidates": top_n,
+        "parent_vote_breakdown": parent_vote_breakdown,
+        "escalation_threshold_count": threshold,
     }
 
 
@@ -230,11 +442,14 @@ def retrieve(query: str, book_uuid: str, class_name: str = "", subject: str = ""
     `chapter_id`/`topic_id` are optional narrowing filters, per CTO spec
     section 9 ("use metadata filtering aggressively... before performing
     broad retrieval whenever the information is known with sufficient
-    confidence"). Currently only book_uuid is resolved upstream by the CLI's
-    test harness - a real caller that has already resolved the chapter (the
-    orchestrator's Stage 1 already does this in the live app, see
-    docs/RAG_SPEC_ALIGNMENT_PLAN.md section 1.2) can pass it here to narrow
-    the search before it ever runs, rather than filtering after the fact.
+    confidence"). STALE-COMMENT CORRECTION (2026-08-25): this used to say
+    only the CLI test harness resolved book_uuid and no live caller passed
+    chapter_id - that's no longer true. The live orchestrator
+    (backend/app/orchestrator_test/test_runner.py::run_orchestrator_pipeline,
+    called from chat.py) resolves both book_uuid and chapter_id and passes
+    them through new_rag_adapter.hybrid_search_v2() into this function
+    exactly as designed here, narrowing the search before it ever runs
+    rather than filtering after the fact.
     """
     top_k = _dynamic_top_k(query)
     logger.info(f"[NEW_RAG][Retrieval] query complexity={classify_query_complexity(query)!r} -> top_k={top_k}")
@@ -297,6 +512,8 @@ def retrieve(query: str, book_uuid: str, class_name: str = "", subject: str = ""
         # without this, "what were the underlying children, and why did this
         # escalate" was unanswerable after the fact.
         "child_candidates": escalation["child_candidates"],
+        "parent_vote_breakdown": escalation.get("parent_vote_breakdown", []),
+        "escalation_threshold_count": escalation.get("escalation_threshold_count"),
         "full_candidate_pool": candidates,
         "top_score": top_score,
         "retried": retried,

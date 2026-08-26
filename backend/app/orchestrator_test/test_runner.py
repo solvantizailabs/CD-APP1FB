@@ -408,8 +408,37 @@ def ground_text_narration(text: str, rag_chunks: list, client, model: str) -> Op
         f"TEXTBOOK CONTEXT:\n{context}\n\nANSWER:\n{text}\n\n"
         "Revised answer (same facts unless corrected by context, no preamble/commentary):"
     )
+
+    # docs/IMAGE_PIPELINE_PLAN.md Stage 3: attach the actual retrieved
+    # diagram images (not just their captions, already in `context` above)
+    # so the model can check the answer against what the diagram literally
+    # shows - a caption is a 1-2 sentence summary and can omit a labeled
+    # value or detail a student's question hinges on. Capped at 3 images
+    # (cost/latency control - each is a flat 85 tokens at detail="low", but
+    # unbounded attachment on every grounding call was never the intent).
+    # Only chunks with a real http(s) structured_content qualify - a chunk
+    # ingested before the Stage 1 fix (or one whose Supabase upload failed)
+    # still has a local-disk path there, which isn't fetchable by the
+    # OpenAI API and must not be sent as if it were a URL.
+    MAX_GROUNDING_IMAGES = 3
+    diagram_chunks_for_context = [
+        c for c in rag_chunks[:6]
+        if c.get("chunk_type") == "diagram" and (c.get("structured_content") or "").startswith("http")
+    ][:MAX_GROUNDING_IMAGES]
+
+    contents: Any
+    if diagram_chunks_for_context:
+        blocks = [prompt]
+        for c in diagram_chunks_for_context:
+            label = f"Diagram — page {c.get('page_number') or '?'}, topic: {c.get('topic_name') or 'unknown'}:"
+            blocks.append(label)
+            blocks.append({"type": "image_url", "image_url": {"url": c["structured_content"], "detail": "low"}})
+        contents = blocks
+    else:
+        contents = [prompt]
+
     try:
-        response = client.models.generate_content(model=model, contents=[prompt], config={"temperature": 0.2})
+        response = client.models.generate_content(model=model, contents=contents, config={"temperature": 0.2})
         grounded = (response.text or "").strip()
         return grounded if grounded else None
     except Exception as e:
@@ -972,6 +1001,12 @@ def run_orchestrator_pipeline(raw_query: str, student_profile: Dict[str, Any]) -
                     # for backward-compatible callers; this is what the per-query debug record
                     # (chat.py, §9) and the grounding pass (below) actually use.
                     "full_text": payload.get("text", payload.get("content", "")) or "",
+                    # A diagram chunk's fetchable image location (real Supabase
+                    # URL as of docs/IMAGE_PIPELINE_PLAN.md Stage 1 - never
+                    # populated before that fix). Used by ground_text_narration()
+                    # below to actually attach the image to the LLM call, not
+                    # just its caption text.
+                    "structured_content": payload.get("structured_content"),
                 })
         except Exception as e:
             print(f"[RAG SEARCH NOTICE] Qdrant search fallback: {e}")

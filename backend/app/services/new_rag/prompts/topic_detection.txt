@@ -6,11 +6,25 @@ First, identify the chapter's own title, exactly as printed at the start of the 
 (e.g. "1 Chemical Reactions and Equations") - this is usually the very first heading in the
 text, often preceded by a chapter number.
 
+Some chapters print their real title only as part of a graphic/cover image on the opening
+page, which never appears as extractable text anywhere - in that case, use the chapter's
+running header instead. NCERT books consistently print TWO DIFFERENT alternating running
+headers on every page after the first: the BOOK's title on even-numbered pages (e.g.
+"CONTEMPORARY INDIA - II"), and THIS CHAPTER's own title on odd-numbered pages (e.g.
+"RESOURCES AND DEVELOPMENT"). When you have to fall back to a running header because no
+other chapter-title text exists, always prefer the ODD-page header - it is the chapter
+title slot. Never use the even-page header as the chapter title; that is the book's own
+title, not this chapter's, and using it produces a wrong, confusing chapter name (e.g.
+using "CONTEMPORARY INDIA - II" or a garbled/reordered mix of the two headers instead of
+the chapter's real title).
+
 Then identify every distinct educational unit in this chapter: numbered section headings
 (e.g. "8.1 Introduction", "8.2 Respiration"), worked "Example" blocks (e.g. "Example 3.2"),
 and any other unit that is CLEARLY SET APART in the source as its own labeled block - a boxed
 or numbered definition, a displayed/numbered formula or equation, a named theorem or law, a
-numbered activity box, an end-of-chapter exercise block, or a chapter summary section.
+numbered activity box, an end-of-chapter exercise block, or a chapter summary section. A
+chapter's unheaded opening prose (before its first real heading) is exactly ONE unit, not
+several - never split it into extra units guessed from what that prose discusses.
 
 GRANULARITY - this is important, read carefully:
 Prefer keeping a numbered section as ONE unit (topic_type "topic" or "explanation") rather than
@@ -76,11 +90,32 @@ For each unit, report:
   with the same topic_name - if they would, make each one more specific to what it actually
   contains.
 - topic_type: exactly one of: "topic", "definition", "explanation", "example", "formula", "theorem", "fact", "process", "question", "exercise", "summary", "activity". Use "topic" only for a general numbered section heading that doesn't obviously fit a more specific type below it. Do NOT use "diagram_description" or "table" - those are detected separately by a different stage, never report them here.
-- anchor_text: the EXACT heading text as it appears verbatim in the given text, character-for-character, marking where this unit begins. Copy it directly from the source text - do not paraphrase, reformat, or fix typos in it.
+- anchor_text: the EXACT heading text as it appears verbatim in the given text, character-for-character, marking where this unit begins. Copy it directly from the source text - do not paraphrase, reformat, or fix typos in it. NEVER append "..." or any other ellipsis/truncation mark to the end of anchor_text, even when the unit's boundary is a full sentence rather than a short heading (this happens for a chapter's unheaded opening prose or an inline sub-heading like "Conservation of Resources:" embedded in a paragraph) - stop copying at a natural word boundary and end the string there, with no trailing punctuation added that isn't literally in the source. An anchor ending in "..." will never verify, because those three characters are never actually present in the source text.
 - start_page: the textbook_page number where this anchor appears
+- section: the numbered section heading this unit falls under, ONE LEVEL UP from topic_name
+  (e.g. for a chapter organized as "8.2 Respiration" containing an "Example 8.2" inside it, the
+  Example's section is "8.2 Respiration", not the Example's own heading). If this unit IS itself
+  a top-level numbered section heading, section should just repeat that same heading. Only report
+  a section value that is verbatim present in the text below, same anchor-verification discipline
+  as anchor_text - if the chapter has no numbered section headings at all (some short chapters are
+  continuous prose under just the chapter title), report section as null rather than inventing
+  one. Do not guess a heading from memory of the textbook's typical structure. IMPORTANT: never
+  report the chapter's own running header/title (the book title or chapter title text repeated
+  in the page header on every page - the SAME thing you identified as chapter_title above) as a
+  section value. It will trivially anchor-verify on almost every page precisely because it
+  repeats everywhere, but it is page furniture, not a real numbered subsection heading - using it
+  as every topic's section produces a useless, uniform section value instead of real subsection
+  structure. If the only "heading" you can find repeated across a unit's pages is that running
+  header, report section as null instead.
+- learning_objective: ONE sentence, written in the same voice as "Understand why pressure
+  increases with depth due to the weight of water above it" - describing what a student who reads
+  THIS unit should come away understanding or being able to do, based only on what this unit's own
+  text actually teaches. Not a summary of the text, not a restatement of topic_name - state the
+  actual learning outcome. For a "definition"/"formula"/"example"/"activity" unit, keep it scoped
+  to that specific unit's content, not the whole surrounding section.
 
 Order the list by where units appear in the chapter. Return ONLY valid JSON, no markdown fences, no commentary:
-{"chapter_title": "...", "topics": [{"topic_name": "...", "topic_type": "topic", "anchor_text": "...", "start_page": N}]}
+{"chapter_title": "...", "topics": [{"topic_name": "...", "topic_type": "topic", "anchor_text": "...", "start_page": N, "section": "...", "learning_objective": "..."}]}
 
 CHAPTER TEXT (page-tagged):
 {page_blob}

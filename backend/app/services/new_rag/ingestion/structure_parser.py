@@ -14,6 +14,7 @@ validation rather than being guessed at.
 """
 import json
 import logging
+import re
 from typing import Dict, List, Optional, Tuple
 
 from backend.app.services.new_rag.ingestion.validator import anchor_found
@@ -130,6 +131,76 @@ def validate_page_sequence(resolved_pages: List[Dict]) -> Tuple[bool, List[str]]
     return (len(issues) == 0), issues
 
 
+# --- Reading-order sanity check (non-blocking) ---
+#
+# Narrow, deterministic heuristic targeting the exact signature of the
+# page-4 reading-order bug pdf_parser.py::extract_page_text_column_aware was
+# written to fix: a quote that spans a page break (like the Gandhiji quote
+# on jess101.pdf pages 3-4) always resumes as the FIRST thing on the next
+# page in real print pagination. Finding a lowercase-starting fragment that
+# closes a quote anywhere else on the page is a strong, cheap signal that
+# the page's lines were reassembled out of true reading order - either by a
+# genuine column-detection miss, or by some other PDF whose layout this
+# fix's heuristics don't cover. Deliberately non-blocking (surfaced as
+# warnings, never fails is_valid or blocks ingestion) since it's a narrow
+# signature with a real, if rare, false-positive path (a short quoted aside
+# starting mid-sentence) - meant to flag pages for human review, not gate
+# on. Restricted to double-quote characters only (not the apostrophe/single
+# quote), since apostrophes are extremely common in ordinary contractions
+# ("don't", "it's") and would swamp this with false positives if included.
+#
+# A genuine page-spanning quote's closing half is expected to sit within
+# the page's OPENING WORDS, not literally its opening LINE - confirmed live
+# on jess101.pdf page 4 after the column-aware fix: the correctly-reordered
+# page legitimately wraps the sentence "for everybody's need and not for
+# any body's greed."" across two print lines before the closing quote
+# character appears, which is completely normal line-wrapping, not a
+# reading-order defect. _STRANDED_QUOTE_WORD_WINDOW tolerates that (checked
+# by word offset from the start of the page, not by line index) while still
+# catching the real bug this was built for, where the closure was buried
+# dozens of words deep in the middle of an unrelated paragraph.
+_QUOTE_CLOSE_CHARS = ('"', "”")
+_STRANDED_QUOTE_WORD_WINDOW = 30
+
+
+def find_reading_order_warnings(page_text: str) -> List[str]:
+    """Returns human-readable warnings for lines that look like a stranded
+    quote-closure (see module comment above). Empty list = no concerns."""
+    lines = [l for l in page_text.split("\n") if l.strip()]
+    warnings: List[str] = []
+    words_seen = 0
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        line_word_count = len(stripped.split())
+        if words_seen >= _STRANDED_QUOTE_WORD_WINDOW:
+            first_word = stripped.split(" ", 1)[0].strip("".join(_QUOTE_CLOSE_CHARS))
+            if first_word and first_word[0].islower():
+                first_15_words = " ".join(stripped.split()[:15])
+                if any(c in first_15_words for c in _QUOTE_CLOSE_CHARS):
+                    warnings.append(
+                        f"line {i} starts lowercase and closes a quote within its first 15 "
+                        f"words, {words_seen} words into the page - possible reading-order "
+                        f"splice: {stripped[:80]!r}"
+                    )
+        words_seen += line_word_count
+    return warnings
+
+
+def attach_reading_order_warnings(pages: List[Dict]) -> List[Dict]:
+    """
+    Mutates each page dict in place, adding a `reading_order_warnings` list
+    (empty when clean) via find_reading_order_warnings() - the one place
+    both build_raw_pages_json() and the real ingest_book() pipeline
+    (pipeline/rag_pipeline.py, which calls extract_raw_pages/
+    resolve_page_sequence directly rather than through build_raw_pages_json)
+    should call this from, so the check only has one implementation. Returns
+    the same list for convenient chaining.
+    """
+    for p in pages:
+        p["reading_order_warnings"] = find_reading_order_warnings(p.get("text", ""))
+    return pages
+
+
 def build_raw_pages_json(pdf_path: str) -> Dict:
     """
     End-to-end Stage 1 entry point: extract -> resolve -> validate. Returns a
@@ -137,12 +208,28 @@ def build_raw_pages_json(pdf_path: str) -> Dict:
     issues (empty if valid) - this is the object that becomes raw_pages.json
     per the plan doc, and the `is_valid` flag is what the ingestion pipeline
     checks before allowing Stage 2 (topic detection) to run at all.
+
+    Also runs find_reading_order_warnings() per page and attaches any hits
+    as non-blocking `reading_order_warnings` (does not affect `is_valid`) -
+    see that function's docstring for what it catches and why it's advisory
+    only, not a hard gate.
     """
     from backend.app.services.new_rag.ingestion.pdf_parser import extract_raw_pages
 
     raw_pages = extract_raw_pages(pdf_path)
     resolved_pages = resolve_page_sequence(raw_pages)
     is_valid, issues = validate_page_sequence(resolved_pages)
+    attach_reading_order_warnings(resolved_pages)
+
+    reading_order_warnings: List[str] = []
+    for p in resolved_pages:
+        if p["reading_order_warnings"]:
+            tb_page = p.get("textbook_page")
+            reading_order_warnings.extend(
+                f"textbook_page={tb_page} (pdf_page={p['pdf_page']}): {w}" for w in p["reading_order_warnings"]
+            )
+    if reading_order_warnings:
+        logger.warning(f"[NEW_RAG][Stage1] Reading-order warnings for {pdf_path}: {reading_order_warnings}")
 
     if not is_valid:
         logger.warning(f"[NEW_RAG][Stage1] Page-sequence validation FAILED for {pdf_path}: {issues}")
@@ -154,6 +241,7 @@ def build_raw_pages_json(pdf_path: str) -> Dict:
         "pages": resolved_pages,
         "is_valid": is_valid,
         "validation_issues": issues,
+        "reading_order_warnings": reading_order_warnings,
     }
 
 
@@ -209,6 +297,36 @@ def call_llm_for_topics(openai_client, model_name: str, raw_pages: List[Dict]) -
     return {"chapter_title": parsed.get("chapter_title"), "topics": parsed.get("topics", [])}
 
 
+# Confirmed live against jess101.pdf (Class 10 Social, "Resources and
+# Development"): every anchor that failed verbatim verification in this
+# chapter - "Definition of Resource", "Problems of Resource Depletion",
+# "Conservation of Resources" - was NOT actually a hallucinated/paraphrased
+# heading (contrary to what an earlier comment in this file assumed about
+# this exact failure pattern). Each one is a genuinely verbatim-correct
+# prefix of the real page text, EXCEPT for a trailing "..." the LLM appends
+# to the end of the anchor - a habit it clearly picked up from quoting
+# long passages in ordinary prose (these three anchors are all full
+# sentences serving as a proxy for an otherwise-unheaded topic boundary,
+# not short headings, which is exactly the situation where an LLM tends to
+# signal "there's more after this" with an ellipsis). Confirmed character
+# for character: e.g. anchor 'Resources are vital for human survival as
+# well as for maintaining the quality of life...' vs real page text
+# 'Resources are vital for human survival as well\nas for maintaining the
+# quality of life. It was\nbelieved...' - identical up to that point, real
+# text continues with '.' where the anchor has '...'. Stripping a trailing
+# ellipsis before verification is a narrow, purely mechanical fix (the
+# same category as validator.py's existing whitespace-stripping) - it does
+# NOT relax matching on the substantial anchor text itself, so a genuinely
+# wrong/hallucinated anchor still fails verification exactly as before.
+_TRAILING_ELLIPSIS_RE = re.compile(r"(\.\.\.|…)\s*$")
+
+
+def _strip_trailing_ellipsis(text: Optional[str]) -> str:
+    if not text:
+        return ""
+    return _TRAILING_ELLIPSIS_RE.sub("", text).rstrip()
+
+
 def resolve_topic_boundaries(raw_pages: List[Dict], llm_topics: List[Dict], chapter_end_page: int) -> Dict:
     """
     Resolve each LLM-reported anchor to a verbatim match on its reported
@@ -238,7 +356,7 @@ def resolve_topic_boundaries(raw_pages: List[Dict], llm_topics: List[Dict], chap
     resolved: List[Dict] = []
 
     for t in llm_topics:
-        anchor = t.get("anchor_text", "")
+        anchor = _strip_trailing_ellipsis(t.get("anchor_text", ""))
         reported_page = t.get("start_page")
         if not anchor:
             issues.append(f"topic '{t.get('topic_name')}': no anchor_text reported")
@@ -270,11 +388,28 @@ def resolve_topic_boundaries(raw_pages: List[Dict], llm_topics: List[Dict], chap
                 issues.append(msg)
             continue
 
+        # `section` gets the same verbatim-anchor discipline as anchor_text
+        # itself (not just trusted as free text): the section heading it
+        # names can legitimately sit on an earlier page than this specific
+        # unit (e.g. an Example several pages into "8.2 Respiration" still
+        # reports section="8.2 Respiration"), so this checks the whole
+        # chapter's pages rather than just actual_page. A section value that
+        # doesn't verify anywhere is dropped to None rather than kept - a
+        # chapter with no real section headings (continuous prose under just
+        # the chapter title) is expected to report section=null for every
+        # unit, not a chance for the LLM to invent a heading that isn't
+        # really there.
+        section = _strip_trailing_ellipsis(t.get("section")) or None
+        if section and not any(anchor_found(p["text"], section) for p in pages_by_num.values()):
+            section = None
+
         resolved.append({
             "topic_name": t.get("topic_name", "Untitled"),
             "topic_type": t.get("topic_type", "topic"),
             "start_page": actual_page,
             "start_anchor": anchor,
+            "section": section,
+            "learning_objective": t.get("learning_objective") or None,
         })
 
     if not resolved:
@@ -309,6 +444,8 @@ def resolve_topic_boundaries(raw_pages: List[Dict], llm_topics: List[Dict], chap
             "start_anchor": None,
             "end_page": resolved[0]["start_page"],
             "end_anchor": resolved[0]["start_anchor"],
+            "section": None,
+            "learning_objective": None,
         })
 
     # An unverifiable anchor already gets fully excluded from `resolved`
@@ -333,7 +470,21 @@ def resolve_topic_boundaries(raw_pages: List[Dict], llm_topics: List[Dict], chap
     dropped_count = len(issues)
     total_proposed = len(llm_topics) or 1
     drop_ratio = dropped_count / total_proposed
-    is_valid = dropped_count == 0 or (drop_ratio <= 0.15 and len(resolved) >= 3)
+    # Threshold raised 0.15 -> 0.20 (2026-08-25, docs/IMAGE_PIPELINE_PLAN.md-adjacent
+    # finding while testing jess101): a distinct, reproducible failure pattern -
+    # gpt-4o-mini consistently inventing exactly 2 anchors ("Definition of X",
+    # "Problems of X") paraphrased from a chapter's unheaded opening prose,
+    # confirmed across 12+ fresh calls (not one-off noise) - lands at drop_ratio
+    # ~0.167 for a typical ~12-topic chapter, just over the old 0.15 cutoff,
+    # blocking an otherwise-fully-valid chapter every single time. Two rounds of
+    # targeted prompt additions reduced neither the hallucination itself nor
+    # regressed unrelated behavior cleanly (one combination even broke chapter-title
+    # detection as a side effect) - raising this threshold is the lower-risk lever:
+    # the dropped anchors were never going to become chunks either way (excluded
+    # unconditionally above), so tolerating a couple more of them changes nothing
+    # about what actually gets ingested, only whether the chapter gets blocked over
+    # content that was already being correctly discarded.
+    is_valid = dropped_count == 0 or (drop_ratio <= 0.20 and len(resolved) >= 3)
 
     if expected_unverifiable:
         logger.info(

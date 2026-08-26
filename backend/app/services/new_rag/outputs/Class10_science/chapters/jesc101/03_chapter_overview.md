@@ -1,7 +1,7 @@
 # 1 Chemical Reactions and Equations
 
 
-## [p.1] Observations of Chemical Reactions
+## [p.1] Introduction
 
 Chemical Reactions
 and Equations
@@ -48,7 +48,7 @@ Martin H. Fischer
 Reprint 2026-27
 
 
-## [p.2] Chemical Equations
+## [p.2] Observations of Chemical Reactions
 
 Science2
 Activity 1.2
@@ -607,8 +607,8 @@ the one given in Activity 1.10.
 that are reduced in the following reactions.
 (i) 4Na(s) + O 2(g) →  2Na2O(s)
 (ii) CuO(s) + H2(g) →  Cu(s) + H2O(l)
-1.3 HAHAHAVE YOU OBSERVED THE EFFECTS OF O XIDA AATION
-REA CTIONS IN EVERYD A AAY LIFE?
+1.3 HAHAHAVE YOU OBSERVED THE EFFECTS OF O XIDA ATION
+REA CTIONS IN EVERYD AAY LIFE?
 1.3.1 Corrosion
 You must have observed that iron articles are shiny when new, but get
 coated with a reddish brown powder when left for some time. This process

@@ -66,7 +66,9 @@ def _extract_chapter_number(chapter_name: str) -> Optional[int]:
     return int(m.group(1)) if m else None
 
 
-def metadata_fields(chapter_name: str, topic_name: str, chunk_type: str, start_page: int) -> Dict:
+def metadata_fields(chapter_name: str, topic_name: str, chunk_type: str, start_page: int,
+                     section: Optional[str] = None, learning_objective: Optional[str] = None,
+                     pdf_page: Optional[int] = None) -> Dict:
     """
     The CTO spec's per-chunk metadata fields (docs/RAG_SPEC_ALIGNMENT_PLAN.md,
     section 3) that are genuinely derivable at chunking time. `subtopic` and
@@ -77,13 +79,25 @@ def metadata_fields(chapter_name: str, topic_name: str, chunk_type: str, start_p
     derive from the real chunk_type classification (Phase 3's 14-type
     expansion) rather than the honest-False placeholder Phase 1 used before
     that classification existed.
+
+    `section`/`learning_objective` (doc 01 §10, doc 02 §1/§4/§6, doc 03 §5)
+    are Stage 2's anchor-verified output, passed through as-is - both
+    genuinely None for a chapter with no numbered section headings or where
+    the LLM didn't produce a value, not a placeholder like subtopic/concept
+    above. `pdf_page` (doc 02 §1/§4/§6's "distinct from printed_page") is the
+    physical PDF page index computed once in Stage 1 (pdf_parser.py) -
+    `page_number` above stays the printed textbook page number for existing
+    consumers, this is an additive field, not a replacement.
     """
     return {
         "topic": topic_name,
         "subtopic": None,
         "concept": None,
+        "section": section,
+        "learning_objective": learning_objective,
         "chapter_number": _extract_chapter_number(chapter_name),
         "page_number": start_page,
+        "pdf_page": pdf_page,
         "has_table": chunk_type == "table",
         "has_diagram": chunk_type == "diagram",
         "has_example": chunk_type == "example",
@@ -138,6 +152,14 @@ def build_parent_chunks(raw_pages: List[Dict], topics: List[Dict], chapter_id: s
         full_text = "\n".join(t for t in text_parts if t.strip())
 
         chunk_type = normalize_chunk_type(topic.get("topic_type"))
+        # The physical PDF page backing this topic's start_page (a printed
+        # textbook page number) - looked up from the same raw_pages Stage 1
+        # already computed both values for, not re-derived. Falls back to
+        # None if this start_page somehow isn't in pages_by_num (shouldn't
+        # happen - start_page came from resolve_topic_boundaries, which only
+        # ever reports pages present in pages_by_num - but a lookup miss
+        # should surface as a missing field, not a wrong guess).
+        start_pdf_page = pages_by_num.get(topic["start_page"], {}).get("pdf_page")
         parents.append({
             "parent_chunk_id": parent_id,
             "chapter_id": chapter_id,
@@ -149,7 +171,10 @@ def build_parent_chunks(raw_pages: List[Dict], topics: List[Dict], chapter_id: s
             "token_count": _token_len(full_text),
             "start_page": topic["start_page"],
             "end_page": topic["end_page"],
-            **metadata_fields(chapter_name, topic["topic_name"], chunk_type, topic["start_page"]),
+            **metadata_fields(chapter_name, topic["topic_name"], chunk_type, topic["start_page"],
+                               section=topic.get("section"),
+                               learning_objective=topic.get("learning_objective"),
+                               pdf_page=start_pdf_page),
         })
     return parents
 
@@ -227,6 +252,9 @@ def build_child_chunks(parent: Dict) -> List[Dict]:
             "token_count": _token_len(full_text),
             "start_page": parent["start_page"],
             "end_page": parent["end_page"],
-            **metadata_fields(parent["chapter_name"], parent["topic_name"], parent["chunk_type"], parent["start_page"]),
+            **metadata_fields(parent["chapter_name"], parent["topic_name"], parent["chunk_type"], parent["start_page"],
+                               section=parent.get("section"),
+                               learning_objective=parent.get("learning_objective"),
+                               pdf_page=parent.get("pdf_page")),
         })
     return children

@@ -1,11 +1,19 @@
 """
-Local-disk artifact storage for the new_rag standalone TEST tool only.
+Local-disk artifact storage, written by the real production ingestion path
+(rag_pipeline.py::ingest_book(), called directly by books.py for every real
+book upload - see that module's docstring, corrected 2026-08-25).
 
-Locked as local-disk for this test harness specifically, per explicit user
-direction during planning: the production design (docs/RAG_REDESIGN_PLAN.md,
-section 7) still calls for Supabase Storage - this is deliberately simpler
-because it's just for inspecting what the pipeline produced while testing,
-not a production storage decision.
+STALE-COMMENT CORRECTION (2026-08-25): originally written when this whole
+pipeline was standalone/test-only, and the framing below was accurate then.
+It no longer is: local disk is still not the durable copy the live app
+relies on (that's Supabase Storage, via supabase_artifacts.py, exactly as
+described below) but this module itself is called during real production
+ingestion, not just "while testing" - a Render redeploy wiping this local
+copy is a real production durability concern, not a test-inspection
+convenience. Kept local-disk-first anyway because it's still genuinely
+useful for direct inspection (raw pages, manifests, diagrams) without a
+network round-trip, same rationale as originally, just not test-only
+anymore.
 
 Folder layout, redesigned twice now after real use surfaced problems each
 time: first from an unreadable flat UUID-named layout, then again after real

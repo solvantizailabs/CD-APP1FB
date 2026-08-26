@@ -25,7 +25,7 @@ survive a production redeploy, which local disk confirmed does not
 import json
 import logging
 import os
-from typing import Any, Optional
+from typing import Any, List, Optional
 
 import httpx
 
@@ -146,6 +146,53 @@ def upload_binary(local_path: str, destination_path: str) -> Optional[str]:
     except Exception as e:
         logger.warning(f"[NEW_RAG][Supabase] Upload exception for {destination_path}: {e}")
         return None
+
+
+def delete_objects(destination_paths: List[str]) -> int:
+    """
+    Bulk-deletes objects from Supabase Storage via the standard Storage API
+    remove endpoint (DELETE /storage/v1/object/{bucket}, body {"prefixes":
+    [...]}). Used by the boilerplate-image cleanup: a chunk can be de-linked
+    from Qdrant/captions.json without the underlying file ever being
+    removed from the bucket, leaving orphaned watermark/icon files behind -
+    this is the explicit follow-up step for that. Chunked into batches of
+    100 paths per request (a practical batch size for this endpoint, not a
+    documented hard limit) so a single call with hundreds of paths doesn't
+    risk a request-size/timeout failure losing the whole batch. Fail-open
+    per batch, same contract as upload_binary()/upload_json(): a failed
+    batch is logged and skipped rather than raising, so one bad batch
+    doesn't stop the rest from being cleaned up. Returns the number of
+    paths successfully requested for deletion (Supabase's response doesn't
+    reliably distinguish "deleted" from "already absent", so this counts
+    requested-and-not-errored, not a verified count).
+    """
+    supabase_url, supabase_key = get_supabase_config()
+    if not (supabase_url and supabase_key):
+        logger.warning("[NEW_RAG][Supabase] SUPABASE_URL/SUPABASE_KEY not configured - skipping delete.")
+        return 0
+    if not destination_paths:
+        return 0
+
+    headers = {
+        "Authorization": f"Bearer {supabase_key}",
+        "apiKey": supabase_key,
+        "Content-Type": "application/json",
+    }
+    url = f"{supabase_url}/storage/v1/object/{BUCKET_NAME}"
+    deleted = 0
+    batch_size = 100
+    with httpx.Client(timeout=30.0) as client:
+        for i in range(0, len(destination_paths), batch_size):
+            batch = [p.lstrip("/") for p in destination_paths[i:i + batch_size]]
+            try:
+                resp = client.request("DELETE", url, headers=headers, json={"prefixes": batch})
+                if resp.status_code in (200, 204):
+                    deleted += len(batch)
+                else:
+                    logger.warning(f"[NEW_RAG][Supabase] Bulk delete batch failed, status {resp.status_code}: {resp.text[:300]}")
+            except Exception as e:
+                logger.warning(f"[NEW_RAG][Supabase] Bulk delete batch exception: {e}")
+    return deleted
 
 
 def download_json(destination_path: str) -> Optional[Any]:

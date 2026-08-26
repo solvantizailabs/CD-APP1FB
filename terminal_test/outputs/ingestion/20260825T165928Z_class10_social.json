@@ -1,0 +1,25 @@
+{
+  "timestamp": "20260825T165928Z",
+  "files": [
+    "D:\\ncret books\\class-10\\social\\jess1dd\\jess101.pdf"
+  ],
+  "class_name": "10",
+  "subject": "social",
+  "status": {
+    "subject": "social",
+    "book_uuid": "b16fe23d-c28a-5be2-8d96-b093e0bed196",
+    "completed_at": "2026-08-25T16:59:16.320000+00:00",
+    "class_name": "10",
+    "status": "completed",
+    "results": [
+      {
+        "chapter_name": "DEVELOPMENT OF RESOURCES",
+        "status": "ingested",
+        "filename": "jess101.pdf",
+        "new_rag_chapter_id": "c11a6f76-6352-431c-bdd3-4fb7d9a9ca3c"
+      }
+    ],
+    "total_chapters": 1,
+    "started_at": "2026-08-25T16:57:55.994000+00:00"
+  }
+}

@@ -1,12 +1,27 @@
 """
-Standalone answer-generation step for the new RAG test harness.
+Standalone answer-generation step for the new RAG test harness (called by
+cli.py option 2).
 
-Reuses the SAME prompt/model the real application uses for answer
-generation - answer_service.generate_answer() with GENERATE_ANSWER_SYSTEM /
-GENERATE_ANSWER_USER (backend/app/prompts/prompt_templates.py) - called
-directly here with no orchestrator, no personalization, no TTS/video call.
-Nothing in answer_service.py, chat.py, or the orchestrator is touched or
-imported for modification; this only calls the existing generator.
+Calls answer_service.generate_answer() with GENERATE_ANSWER_SYSTEM /
+GENERATE_ANSWER_USER (backend/app/prompts/prompt_templates.py) directly,
+with no orchestrator, no personalization, no TTS/video call. Nothing in
+answer_service.py, chat.py, or the orchestrator is touched or imported for
+modification; this only calls the existing generator.
+
+STALE-COMMENT CORRECTION (2026-08-25): this used to say generate_answer()
+is "the SAME prompt/model the real application uses for answer generation"
+- that's no longer true. The live app's real answers go through a
+different call chain entirely: chat.py -> run_orchestrator_pipeline
+(backend/app/orchestrator_test/test_runner.py) generates text_narration
+from a master orchestrator prompt BEFORE retrieval runs, then
+ground_text_narration() only revises it using retrieved chunks -
+answer_service.generate_answer() is never called in that live path (see
+docs/IMAGE_PIPELINE_PLAN.md section 4.2 for how this was traced). This
+module still calls a real, working production function
+(generate_answer() genuinely exists and works), it's just not the one a
+live student query actually produces - useful for inspecting how retrieved
+chunks affect a generated answer, not a faithful preview of the live app's
+output.
 """
 import re
 from typing import Dict

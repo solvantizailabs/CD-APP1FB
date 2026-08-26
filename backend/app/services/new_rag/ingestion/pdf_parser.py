@@ -22,6 +22,17 @@ captioned via a vision-capable LLM call. The caption is what gets embedded
 later (locked design: never embed raw pixel content, embed a
 natural-language description that points back to the image).
 
+A PDF page's embedded images include page-furniture (a repeated watermark,
+recurring margin icons) alongside real content - pypdf extracts everything
+indiscriminately, since it's just reading the file format's image objects,
+not recognizing what they show. flag_boilerplate_images() below is a
+deterministic (hash-based, no LLM) post-extraction filter that identifies
+which extracted images are actually the same recurring page-furniture
+asset repeated chapter-wide, so the caller can exclude them before they
+ever reach the caption LLM - see its docstring for why this matters (a
+boilerplate image given per-page topic context gets hallucinated into a
+fake, topic-specific caption instead of being recognized as decorative).
+
 Tables: true structural table extraction (rows/columns) is NOT reliable from
 plain pypdf text alone - pypdf's extract_text() does not preserve column
 layout. What's implemented here is a best-effort heuristic that flags
@@ -33,12 +44,17 @@ robust table structure extraction - a dedicated layout-aware parser would be
 a real future improvement, noted as a limitation rather than solved here.
 """
 import base64
+import hashlib
 import io
+import json
+import os
 import re
 import logging
-from typing import Dict, List, Optional
+from collections import defaultdict
+from typing import Dict, List, Optional, Tuple
 
 from pypdf import PdfReader
+import pdfplumber
 
 from backend.app.services.new_rag.retry import call_with_retry
 from backend.app.services.new_rag import rate_governor
@@ -286,6 +302,253 @@ def collapse_letter_stutter(text: str) -> str:
     return _LETTER_STUTTER_RE.sub(lambda m: m.group(1), text)
 
 
+# --- Column-aware page-text extraction ---
+#
+# pypdf's page.extract_text() has no concept of columns - it linearizes text
+# in whatever order the PDF's content stream happens to emit drawing
+# operations, which is NOT guaranteed to match visual reading order on a
+# multi-column page. Confirmed live against jess101.pdf page 4 (Class 10
+# Social, "Resources and Development"): the tail of the left column
+# (a Gandhiji quote's closing half, continuing from page 3, plus the Club of
+# Rome/Schumacher/Brundtland Commission paragraph and the "LAND RESOURCES"
+# heading) was emitted AFTER the right column's "LAND UTILISATION" heading
+# and its numbered list, instead of before it - splicing two unrelated
+# topics' text together mid-chunk downstream and mislabeling the misplaced
+# block under the wrong topic. This uses pdfplumber's word-level bounding
+# boxes (x0/x1/top/bottom per word - not available from pypdf) to detect a
+# real column gutter and reassemble text in true left-column-then-right-
+# column reading order instead of trusting pypdf's internal ordering.
+_GUTTER_MIN_WIDTH_FRACTION = 0.02   # min gap between the two margin clusters, relative to page width
+_GUTTER_CENTER_MIN_FRACTION = 0.25  # the two margins' midpoint must sit within [0.25, 0.75] of page width
+_GUTTER_CENTER_MAX_FRACTION = 0.75
+_COLUMN_MIN_LINE_FRACTION = 0.15    # each side needs at least this fraction of the page's lines
+_LINE_Y_TOLERANCE = 3.0             # px tolerance for grouping words onto the same line
+
+
+def _group_words_by_row(words: List[Dict], y_tol: float = _LINE_Y_TOLERANCE) -> List[List[Dict]]:
+    """Groups word dicts (each with 'text','x0','x1','top') into visual rows
+    by y-position, top-to-bottom, each row's words ordered left-to-right.
+    Returns the raw word-lists (not yet joined to text) - on a two-column
+    page a "row" here can genuinely contain words from BOTH columns at once
+    (whenever a left-column line and a right-column line happen to sit at
+    the same height, which is common) - see _split_row_by_gutter, which is
+    what actually separates those back out; this function only groups by
+    height, nothing else."""
+    if not words:
+        return []
+    words_sorted = sorted(words, key=lambda w: w["top"])
+    rows = []
+    current = [words_sorted[0]]
+    current_top = words_sorted[0]["top"]
+    for w in words_sorted[1:]:
+        if abs(w["top"] - current_top) <= y_tol:
+            current.append(w)
+        else:
+            rows.append(current)
+            current = [w]
+            current_top = w["top"]
+    rows.append(current)
+    for row in rows:
+        row.sort(key=lambda w: w["x0"])
+    rows.sort(key=lambda r: r[0]["top"])
+    return rows
+
+
+def _row_to_line_dict(row_words: List[Dict]) -> Dict:
+    return {
+        "top": min(w["top"] for w in row_words),
+        "x0": min(w["x0"] for w in row_words),
+        "x1": max(w["x1"] for w in row_words),
+        "text": " ".join(w["text"] for w in row_words),
+    }
+
+
+def _group_words_into_lines(words: List[Dict], y_tol: float = _LINE_Y_TOLERANCE) -> List[Dict]:
+    """Groups words into line dicts (top/x0/x1/text), top-to-bottom, without
+    any column awareness - see _group_words_by_row for the row grouping
+    this builds on."""
+    return [_row_to_line_dict(row) for row in _group_words_by_row(words, y_tol)]
+
+
+# A row's internal word-to-word gap this wide is no longer normal
+# inter-word spacing (confirmed live against jess101.pdf: normal spacing
+# between words on the same line is a few px, well under 10) - it's the
+# signature of a row that actually contains BOTH columns' text side by side
+# at the same height, and should be split back into two separate lines
+# rather than read as one run-on line mixing two unrelated columns' words.
+_ROW_INTERNAL_GUTTER_MIN_GAP = 12.0
+
+
+def _split_row_by_gutter(row_words: List[Dict], min_gap: float = _ROW_INTERNAL_GUTTER_MIN_GAP) -> Tuple[List[Dict], List[Dict]]:
+    """
+    Looks for the largest internal x-gap within one already-height-grouped
+    row of words. If it's wide enough to be a real column gutter (not just
+    normal word spacing), splits the row there and returns (left_part,
+    right_part) - both non-empty. If no such gap exists, returns
+    (row_words, []) unchanged - this row is genuinely single-column content.
+    """
+    if len(row_words) < 2:
+        return row_words, []
+    best_i, best_gap = None, 0.0
+    for i in range(1, len(row_words)):
+        gap = row_words[i]["x0"] - row_words[i - 1]["x1"]
+        if gap > best_gap:
+            best_i, best_gap = i, gap
+    if best_i is not None and best_gap >= min_gap:
+        return row_words[:best_i], row_words[best_i:]
+    return row_words, []
+
+
+def _detect_column_margins(lines: List[Dict], page_width: float) -> Optional[Tuple[float, float]]:
+    """
+    Detects two-column layout from LINE start positions (x0), not full word
+    spans. A line's start (left edge) is a reliable "column left margin"
+    signal - nearly every line in a column begins flush against that
+    column's margin - whereas a line's END (x1, ragged-right prose) varies
+    too much to use for detecting the gutter itself (confirmed live: an
+    earlier version tried to find a page-wide gap in merged [x0,x1] word
+    spans and failed on every real two-column page in this chapter, because
+    a single word anywhere in the gutter's x-range - one indented line, one
+    wide heading - collapses the whole-page merge into one span covering
+    nearly the full page width).
+
+    Sorts line x0 values and looks for the single largest gap that splits
+    them into two groups, each with a healthy share of the page's lines,
+    centered roughly in the middle of the page. Returns
+    (left_margin_x0, right_margin_x0) - the rightmost x0 in the left
+    cluster and the leftmost x0 in the right cluster - or None if no such
+    split exists (single-column page, or no reliable pattern).
+
+    Outlier x0 values that occur only once or twice on the page (a stray
+    footnote, a decorative drop-cap glyph, one oddly-indented line) are
+    excluded before the gap search - confirmed live these single-occurrence
+    values otherwise sit BETWEEN the two real column-margin clusters and
+    get mistaken for the split point themselves (e.g. jess101.pdf page 4's
+    true clusters are ~17 lines near x0=80-90 and ~30 lines near x0=325-360,
+    but two unrelated single-occurrence x0 values at ~175 and ~275 sat
+    between them, and the naive largest-adjacent-gap search picked the gap
+    between THOSE two noise points instead of the real 90-to-325 gutter,
+    since gaps are only ever compared to their immediate sorted neighbor).
+    Real column margins are used by many lines each (every paragraph line
+    in that column starts there), so requiring a minimum occurrence count
+    reliably separates genuine margins from one-off noise.
+    """
+    if not lines or page_width <= 0:
+        return None
+    x0_counts: Dict[float, int] = defaultdict(int)
+    for l in lines:
+        x0_counts[round(l["x0"] / 5) * 5] += 1
+    min_occurrences = max(2, int(len(lines) * 0.03))
+    frequent_x0s = sorted(x0 for x0, count in x0_counts.items() if count >= min_occurrences)
+    n = len(frequent_x0s)
+    if n < 4:
+        return None
+
+    total_lines = len(lines)
+    best = None
+    best_gap = 0.0
+    for i in range(1, n):
+        gap = frequent_x0s[i] - frequent_x0s[i - 1]
+        left_count = sum(c for x0, c in x0_counts.items() if x0 <= frequent_x0s[i - 1])
+        right_count = sum(c for x0, c in x0_counts.items() if x0 >= frequent_x0s[i])
+        center = (frequent_x0s[i - 1] + frequent_x0s[i]) / 2
+        if (gap >= page_width * _GUTTER_MIN_WIDTH_FRACTION
+                and left_count >= total_lines * _COLUMN_MIN_LINE_FRACTION
+                and right_count >= total_lines * _COLUMN_MIN_LINE_FRACTION
+                and page_width * _GUTTER_CENTER_MIN_FRACTION <= center <= page_width * _GUTTER_CENTER_MAX_FRACTION
+                and gap > best_gap):
+            best = (frequent_x0s[i - 1], frequent_x0s[i])
+            best_gap = gap
+    return best
+
+
+def extract_page_text_column_aware(pdfplumber_page) -> Optional[str]:
+    """
+    Reassembles one page's text in true reading order: the whole left
+    column top-to-bottom, then the whole right column top-to-bottom. Falls
+    back to a plain top-to-bottom line order (still bounding-box-derived,
+    just not column-split) when no reliable two-column margins are found -
+    most pages in this chapter are single-column and already extract
+    correctly via pypdf, so this path only needs to activate for genuine
+    two-column layouts.
+
+    Rows are grouped by height first (_group_words_by_row), then EACH ROW
+    is individually checked for an internal gutter gap
+    (_split_row_by_gutter) before being classified left/right - not a
+    single global x-threshold applied to every word. Two earlier approaches
+    were tried and confirmed live to fail on jess101.pdf page 4:
+    1. Classifying already-merged lines (grouped by height only, no column
+       awareness) by their x0/x1 range spliced unrelated columns' text
+       together mid-line whenever a left-column row and a right-column row
+       shared a height (common) - both columns' words end up in the same
+       "line" text with no separation at all.
+    2. Classifying individual WORDS by a single global x-midpoint (halfway
+       between the two detected column margins) chopped genuine left-column
+       lines in half mid-sentence, because a left column's own line
+       legitimately extends rightward well past that midpoint (a column is
+       usually much wider than the gap between the two margins' START
+       positions) - words from the SAME line's tail end up wrongly
+       reassigned to the "right" bucket.
+    Splitting per-row at that row's own internal gap (real inter-word
+    spacing is a few px; a genuine same-row cross-column gap is confirmed
+    live to be >= _ROW_INTERNAL_GUTTER_MIN_GAP) avoids both failure modes:
+    a true single-column row has no internal gap that wide and is
+    classified as one whole line; a genuinely merged two-column row gets
+    split exactly at its own real gutter, with both halves kept intact.
+
+    Returns None (never raises) if pdfplumber can't extract words at all,
+    so the caller can fall back to pypdf without losing the page.
+    """
+    try:
+        words = pdfplumber_page.extract_words(use_text_flow=False, keep_blank_chars=False)
+    except Exception as e:
+        logger.warning(f"[NEW_RAG][Stage1] pdfplumber word extraction failed: {e}")
+        return None
+    if not words:
+        return ""
+
+    page_width = pdfplumber_page.width
+    rows = _group_words_by_row(words)
+    natural_lines = [_row_to_line_dict(r) for r in rows]
+    margins = _detect_column_margins(natural_lines, page_width)
+
+    if margins is None:
+        return "\n".join(l["text"] for l in natural_lines)
+
+    left_margin, right_margin = margins
+    midpoint = (left_margin + right_margin) / 2
+
+    left_lines, right_lines = [], []
+    for row in rows:
+        left_part, right_part = _split_row_by_gutter(row)
+        if right_part:
+            # Genuinely two columns' text sharing this row's height - both
+            # halves are real, keep both.
+            left_lines.append(_row_to_line_dict(left_part))
+            right_lines.append(_row_to_line_dict(right_part))
+        else:
+            # Single-column row - classify the whole row by which margin
+            # its own start is nearer to (never split it).
+            line = _row_to_line_dict(row)
+            if line["x0"] < midpoint:
+                left_lines.append(line)
+            else:
+                right_lines.append(line)
+
+    total_words = len(words)
+    left_word_count = sum(len(l["text"].split()) for l in left_lines)
+    right_word_count = sum(len(l["text"].split()) for l in right_lines)
+    if (left_word_count < total_words * _COLUMN_MIN_LINE_FRACTION
+            or right_word_count < total_words * _COLUMN_MIN_LINE_FRACTION):
+        # Not a real balanced two-column page after all - don't force a
+        # column split, just use natural top-to-bottom order.
+        return "\n".join(l["text"] for l in natural_lines)
+
+    left_lines.sort(key=lambda l: l["top"])
+    right_lines.sort(key=lambda l: l["top"])
+    return "\n".join(l["text"] for l in left_lines + right_lines)
+
+
 def extract_raw_pages(pdf_path: str) -> List[Dict]:
     """
     Extract raw text and a per-page detected textbook_page for every page in
@@ -297,18 +560,76 @@ def extract_raw_pages(pdf_path: str) -> List[Dict]:
     else sees it, since all three artifacts otherwise corrupt page-number
     detection, topic-heading anchors, AND general chunk text quality all at
     once - cleaning once here benefits every downstream stage.
+
+    Text extraction defaults to pypdf's plain extract_text() for every page,
+    unchanged from before - that already produces correct reading order on
+    the large majority of pages (confirmed live: only 1 of 12 pages in
+    jess101.pdf needed correction). The column-aware pdfplumber path
+    (extract_page_text_column_aware, see its docstring) is only ATTEMPTED on
+    a page whose pypdf text already fails find_reading_order_warnings()
+    (structure_parser.py) - i.e. only pages that already look broken - and
+    its result is only KEPT if it (a) isn't drastically shorter than pypdf's
+    own output and (b) actually clears the warning it was trying to fix.
+
+    This gating is deliberate, not a shortcut: an earlier version of this
+    function ran column-detection unconditionally on every page and it was
+    confirmed live to be a net regression - the gutter-detection heuristic
+    false-positived on several genuinely single-column pages (ones with an
+    off-center figure/caption fooling it into seeing two columns), silently
+    breaking pages that were already correct, including page-number
+    detection on some of them. Gating on the (separately validated, zero
+    false positives across this same chapter) reading-order sanity check
+    first means the fragile column-splitting logic only ever runs on pages
+    that are already known to be broken, and self-verifies its own result
+    instead of being trusted blindly.
     """
+    from backend.app.services.new_rag.ingestion.structure_parser import find_reading_order_warnings
+
     reader = PdfReader(pdf_path)
+    plumber_pages = None
+    try:
+        plumber_doc = pdfplumber.open(pdf_path)
+        plumber_pages = plumber_doc.pages
+    except Exception as e:
+        logger.warning(f"[NEW_RAG][Stage1] pdfplumber could not open {pdf_path!r}, "
+                        f"falling back to pypdf-only extraction for all pages: {e}")
+
     pages = []
     for idx, page in enumerate(reader.pages):
-        text = normalize_symbol_font_chars(page.extract_text() or "")
+        pypdf_text = page.extract_text() or ""
+        text = pypdf_text
+        column_aware_used = False
+
+        if (find_reading_order_warnings(pypdf_text)
+                and plumber_pages is not None and idx < len(plumber_pages)):
+            column_text = extract_page_text_column_aware(plumber_pages[idx])
+            # Defensive floor: only trust the column-aware result if it's not
+            # drastically shorter than pypdf's own extraction (a sign the
+            # word-level extraction missed content pypdf found some other
+            # way) - never let a reordering bug silently drop text. And only
+            # actually use it if it resolves the warning that triggered this
+            # attempt in the first place - if it doesn't, the column-split
+            # guess was wrong for this page too, so keep pypdf's version
+            # rather than swap in an equally-unverified alternative.
+            if (column_text is not None
+                    and len(column_text) >= 0.7 * len(pypdf_text)
+                    and not find_reading_order_warnings(column_text)):
+                text = column_text
+                column_aware_used = True
+
+        text = normalize_symbol_font_chars(text)
         text = collapse_letter_stutter(text)
         text = collapse_repeated_runs(text)
         pages.append({
             "pdf_page": idx + 1,
             "text": text,
             "detected_textbook_page": detect_textbook_page_number(text),
+            "column_aware_extraction_used": column_aware_used,
         })
+
+    if plumber_pages is not None:
+        plumber_doc.close()
+
     return pages
 
 
@@ -334,7 +655,7 @@ def _format_caption_prompt(chapter_name: Optional[str] = None, topic_name: Optio
 
 
 def extract_diagram_images(pdf_path: str, start_pdf_page: int, end_pdf_page: int,
-                            min_size_px: int = 110) -> List[Dict]:
+                            min_size_px: int = 20) -> List[Dict]:
     """
     Extracts embedded images from the given PDF page range - deterministic,
     no LLM call, no caption yet. Split out from captioning (caption_diagram_image
@@ -343,8 +664,22 @@ def extract_diagram_images(pdf_path: str, start_pdf_page: int, end_pdf_page: int
     captioning inside this same extraction loop (the original design) meant
     every caption was generated in isolation from pixels alone, since the
     caller only learns which topic a diagram belongs to after extraction
-    finishes. Skips tiny images (likely decorative icons/rules, not real
-    diagrams) via the min_size_px filter.
+    finishes. Skips only genuinely degenerate fragments (bullet points, thin
+    rule lines) via the min_size_px filter.
+
+    Bug fix (2026-08-25, found via live testing against jemh101.pdf, Class
+    10 Maths "Real Numbers"): min_size_px was 110, meant to skip decorative
+    icons - but confirmed live this also silently dropped a real, legitimate
+    embedded image (a historical portrait photo in a sidebar box, 82x115px)
+    before it ever reached classification. 110 was too blunt an instrument
+    for "is this real content" - we already have a far more reliable signal
+    for that exact question (is_content, from caption_diagram_image's own
+    vision-model judgment, added earlier this session), so this floor's job
+    is now only to filter out fragments too small to be a real image at all
+    (a bullet glyph, a hairline rule), not to make a content judgment by
+    pixel dimensions. Lowered to 20 - low enough that a genuinely small
+    photo like this one survives to be classified on its actual content,
+    high enough to still skip true noise.
     """
     reader = PdfReader(pdf_path)
     diagrams = []
@@ -414,25 +749,276 @@ def extract_diagram_images(pdf_path: str, start_pdf_page: int, end_pdf_page: int
             # overwrite happened - only the saved file was wrong). Prefixing
             # a per-page loop index guarantees a unique filename regardless
             # of what pypdf calls the image internally.
+            #
+            # The extension must come from `fmt` (the ACTUAL bytes we just
+            # wrote to `image_bytes`), not from img.name's own extension -
+            # confirmed live (jess102.pdf) that pypdf's img.name carries the
+            # PDF's original encoding extension (e.g. "Im2.tif") even when
+            # the block above converted the real bytes to JPEG, silently
+            # saving JPEG-encoded content under a ".tif"/".jp2" filename.
+            # Every standard image viewer (browsers, Supabase Storage's own
+            # preview, a future <img> tag) trusts the extension over
+            # content-sniffing for inline rendering, so a mismatched
+            # extension makes an otherwise-perfectly-valid image
+            # unviewable anywhere except a tool that opens it byte-first
+            # (e.g. PIL) - this was the actual cause of "only the watermark
+            # PNG shows up as an image" when browsing extracted output.
+            base_name = os.path.splitext(img.name)[0]
+            ext = "jpg" if fmt.upper() == "JPEG" else fmt.lower()
             diagrams.append({
                 "pdf_page": pdf_page_idx + 1,
-                "image_name": f"{img_idx_on_page}_{img.name}",
+                "image_name": f"{img_idx_on_page}_{base_name}.{ext}",
                 "image_bytes": image_bytes,
                 "image_format": fmt,
+                "image_hash": hashlib.sha256(image_bytes).hexdigest(),
                 "size": pil_img.size,
             })
 
     return diagrams
 
 
+# --- Vector-drawn diagram extraction (2026-08-25) ---
+#
+# extract_diagram_images() above only finds embedded RASTER image objects
+# (pypdf's page.images, which walks /Image-subtype XObjects) - confirmed
+# live against jemh101.pdf (Class 10 Maths, "Real Numbers") that this is
+# structurally blind to a real, important diagram: a factor tree built
+# entirely from vector-drawn rectangles and connecting lines (a PDF /Form
+# XObject containing raw drawing operators), with no image bytes anywhere
+# for pypdf to find. This is common for mathematical/geometric figures
+# (factor trees, number lines, geometric constructions), which are
+# typically cheaper to typeset as vector drawing instructions than as
+# embedded pictures - unlike photos/maps/charts, which usually are raster
+# and already handled above.
+#
+# Approach: pdfplumber exposes the actual vector drawing primitives on a
+# page (page.rects, page.lines, page.curves - the same objects a PDF
+# renderer executes to draw the factor tree's boxes and connectors).
+# Cluster nearby primitives into spatial groups, and treat a cluster as a
+# real diagram candidate only if it has enough distinct primitives to be a
+# structured figure rather than simple page decoration - confirmed live
+# this distinction matters: a plain bordered sidebar box (e.g. the
+# Gauss-portrait "fun fact" box on jemh101.pdf page 3) is drawn with
+# exactly ONE rectangle and nothing else nearby, while the factor tree on
+# page 2 is 15 rects (~11 factor boxes + a couple of decorative rules) plus
+# 9 connecting lines, clustered tightly together - an order of magnitude
+# more primitives in one place. Requiring a minimum cluster size
+# (MIN_VECTOR_DIAGRAM_PRIMITIVES) is a simple, confirmed-live-effective way
+# to keep the real diagram while excluding single-rectangle decorative
+# boxes, without needing to distinguish "diagram" from "box border" by
+# shape semantics.
+#
+# Once a candidate region's bounding box is found, it's cropped and
+# rendered to a real PNG image and returned in the EXACT SAME shape as
+# extract_diagram_images()'s raster results (pdf_page/image_name/
+# image_bytes/image_format/image_hash/size) - deliberately, so this new
+# source flows through the entire existing pipeline unchanged: boilerplate
+# flagging, is_content classification, captioning, Stage 6/7 embedding, all
+# of it. Only the extraction step gains a new source; nothing downstream
+# needs to know or care that a given "diagram" came from a vector region
+# instead of an embedded image object.
+MIN_VECTOR_DIAGRAM_PRIMITIVES = 5
+MIN_VECTOR_DIAGRAM_AREA_PX = 8000  # rejects small clusters of decorative marks (corner ticks, rule-line ends)
+_VECTOR_CLUSTER_GAP = 15.0  # px - primitives within this distance of each other's bounding box are treated as one figure
+
+
+def _cluster_bboxes(boxes: List[tuple], gap: float = _VECTOR_CLUSTER_GAP) -> List[List[tuple]]:
+    """
+    Groups (x0, top, x1, bottom) bounding boxes into clusters: any two boxes
+    whose (gap-expanded) extents overlap end up in the same cluster,
+    transitively. Simple iterative merge - the number of vector primitives
+    on one page is small (tens, not thousands), so this doesn't need to be
+    more sophisticated than repeated pairwise merging to a fixed point.
+    """
+    clusters = [[b] for b in boxes]
+    changed = True
+    while changed:
+        changed = False
+        merged: List[List[tuple]] = []
+        absorbed = [False] * len(clusters)
+        for i, cluster in enumerate(clusters):
+            if absorbed[i]:
+                continue
+            current = list(cluster)
+            cx0 = min(b[0] for b in current) - gap
+            cy0 = min(b[1] for b in current) - gap
+            cx1 = max(b[2] for b in current) + gap
+            cy1 = max(b[3] for b in current) + gap
+            for j in range(i + 1, len(clusters)):
+                if absorbed[j]:
+                    continue
+                other = clusters[j]
+                if any(not (b[2] < cx0 or b[0] > cx1 or b[3] < cy0 or b[1] > cy1) for b in other):
+                    current.extend(other)
+                    absorbed[j] = True
+                    changed = True
+                    cx0 = min(cx0, min(b[0] for b in other) - gap)
+                    cy0 = min(cy0, min(b[1] for b in other) - gap)
+                    cx1 = max(cx1, max(b[2] for b in other) + gap)
+                    cy1 = max(cy1, max(b[3] for b in other) + gap)
+            merged.append(current)
+        clusters = merged
+    return clusters
+
+
+def extract_vector_diagram_regions(pdf_path: str, start_pdf_page: int, end_pdf_page: int,
+                                    min_primitives: int = MIN_VECTOR_DIAGRAM_PRIMITIVES,
+                                    min_area_px: int = MIN_VECTOR_DIAGRAM_AREA_PX,
+                                    resolution: int = 150) -> List[Dict]:
+    """
+    Finds vector-drawn diagrams (see module comment above) and returns them
+    cropped/rendered as real images, in the same dict shape
+    extract_diagram_images() uses. Fails open per-page (a rendering error on
+    one page never blocks the rest of the chapter) and returns [] entirely
+    if pdfplumber can't open the file - vector-diagram extraction is a
+    supplementary source on top of the raster path above, never a
+    requirement for ingestion to proceed.
+    """
+    import pdfplumber
+
+    diagrams: List[Dict] = []
+    try:
+        plumber_doc = pdfplumber.open(pdf_path)
+    except Exception as e:
+        logger.warning(f"[NEW_RAG][Stage5] pdfplumber could not open {pdf_path!r} for vector-diagram "
+                        f"extraction (non-fatal, raster extraction is unaffected): {e}")
+        return diagrams
+
+    with plumber_doc:
+        for pdf_page_idx in range(start_pdf_page - 1, min(end_pdf_page, len(plumber_doc.pages))):
+            page = plumber_doc.pages[pdf_page_idx]
+            try:
+                boxes = (
+                    [(r["x0"], r["top"], r["x1"], r["bottom"]) for r in page.rects]
+                    + [(min(l["x0"], l["x1"]), min(l["top"], l["bottom"]),
+                        max(l["x0"], l["x1"]), max(l["top"], l["bottom"])) for l in page.lines]
+                    + [(c["x0"], c["top"], c["x1"], c["bottom"]) for c in page.curves]
+                )
+            except Exception as e:
+                logger.warning(f"[NEW_RAG][Stage5] Could not read vector primitives on "
+                                f"pdf_page={pdf_page_idx + 1}: {e}")
+                continue
+            if len(boxes) < min_primitives:
+                continue
+
+            for idx, cluster in enumerate(_cluster_bboxes(boxes)):
+                if len(cluster) < min_primitives:
+                    continue
+                x0 = max(0.0, min(b[0] for b in cluster) - 5)
+                top = max(0.0, min(b[1] for b in cluster) - 5)
+                x1 = min(page.width, max(b[2] for b in cluster) + 5)
+                bottom = min(page.height, max(b[3] for b in cluster) + 5)
+                if (x1 - x0) * (bottom - top) < min_area_px:
+                    continue
+
+                try:
+                    cropped_image = page.within_bbox((x0, top, x1, bottom)).to_image(resolution=resolution)
+                    pil_img = cropped_image.original
+                except Exception as e:
+                    logger.warning(f"[NEW_RAG][Stage5] Could not render vector-diagram region on "
+                                    f"pdf_page={pdf_page_idx + 1}: {e}")
+                    continue
+
+                buf = io.BytesIO()
+                pil_img.save(buf, format="PNG")
+                image_bytes = buf.getvalue()
+                diagrams.append({
+                    "pdf_page": pdf_page_idx + 1,
+                    "image_name": f"vec{idx}_region.png",
+                    "image_bytes": image_bytes,
+                    "image_format": "PNG",
+                    "image_hash": hashlib.sha256(image_bytes).hexdigest(),
+                    "size": pil_img.size,
+                })
+
+    return diagrams
+
+
+# Both conditions required so a real illustration that's deliberately reused
+# twice in one chapter isn't wrongly excluded - real reuse is rare and
+# low-count, watermark-style repetition is on nearly every page.
+#
+# BOILERPLATE_PAGE_FRACTION lowered 0.4 -> 0.25 (2026-08-25, confirmed live
+# against jess101.pdf): a real decorative page-corner graphic repeated
+# byte-identically on 4 of this chapter's 12 pages (33%) was getting missed
+# by the old 0.4 cutoff and indexed as 4 separate "diagram" chunks with a
+# hallucinated, topic-specific caption on each ("Geographical Resource...
+# curved path... red dot" - a caption the model invented for a decoration
+# with nothing to actually describe). MIN_OCCURRENCES=3 already does most of
+# the real work here - genuine content is confirmed to essentially never
+# repeat 3+ times verbatim in one chapter (each real diagram illustrates one
+# specific concept once) - so 0.25 (i.e. "on at least 3 of a 12-page
+# chapter's pages", scaling with chapter length) still requires real
+# recurrence, just without demanding it appear on a near-majority of pages.
+BOILERPLATE_MIN_OCCURRENCES = 3
+BOILERPLATE_PAGE_FRACTION = 0.25
+
+
+def flag_boilerplate_images(diagrams: List[Dict], total_pages: int) -> List[Dict]:
+    """
+    Flags recurring, byte-identical images (the NCERT "not to be
+    republished" watermark, repeated margin icons) that appear on most/all
+    pages of the chapter - real chapter diagrams are page-specific and never
+    repeat this way. Confirmed live (jess102.pdf): the watermark and a
+    generic margin icon are both embedded as distinct image objects on
+    every single page, byte-for-byte identical - and because the caption
+    LLM is given per-page chapter/topic context, it hallucinated a
+    different, plausible-sounding but entirely fabricated caption for the
+    same boilerplate image on every page instead of recognizing it as
+    decorative (e.g. "Illustrates various types of flora and fauna..." on
+    one page, "Shows the Project Tiger initiative..." on another, for
+    pixel-identical bytes). Those fabricated captions were then embedded
+    and retrievable as if they were real diagram content - a genuine
+    grounding risk, not a cosmetic issue.
+
+    Mutates each dict in place, adding `is_boilerplate` (image_hash is
+    already present from extract_diagram_images). Caller is expected to
+    skip captioning/saving/chunking entirely for flagged images rather than
+    just deprioritizing them - a boilerplate image has no real chapter
+    content to caption in the first place.
+    """
+    pages_by_hash = defaultdict(set)
+    for d in diagrams:
+        pages_by_hash[d["image_hash"]].add(d["pdf_page"])
+
+    for d in diagrams:
+        occurrence_pages = pages_by_hash[d["image_hash"]]
+        d["is_boilerplate"] = (
+            len(occurrence_pages) >= BOILERPLATE_MIN_OCCURRENCES
+            and total_pages > 0
+            and len(occurrence_pages) / total_pages >= BOILERPLATE_PAGE_FRACTION
+        )
+    return diagrams
+
+
 def caption_diagram_image(openai_raw_client, image_bytes: bytes, fmt: str,
-                           chapter_name: Optional[str] = None, topic_name: Optional[str] = None) -> str:
+                           chapter_name: Optional[str] = None, topic_name: Optional[str] = None) -> Dict:
     """
     Captions one already-extracted image. `chapter_name`/`topic_name`, when
     supplied, are injected into the prompt's {context_block} (same
     enrichment pattern as embeddings/embedding_service.py::format_for_embedding) -
     a generic circuit diagram gets a caption grounded in *this chapter's*
     specific concept instead of pixels alone.
+
+    Returns {"caption": str, "is_content": bool}. `is_content` is the model's
+    own real-diagram-vs-page-furniture classification (title banner, QR
+    code, decorative icon/border/logo, watermark, generic stock photo - see
+    prompts/diagram_caption.txt) - confirmed live this catches real junk
+    that the earlier, purely hash-based boilerplate filter
+    (flag_boilerplate_images) structurally cannot: a one-off, non-repeating
+    image (a chapter's title-banner art, a QR code that appears exactly
+    once) was never going to hit that filter's repeated-across-many-pages
+    signal no matter how its thresholds are tuned, because it only ever
+    appears once. This is a second, independent filter on a different
+    signal (content judgment, not byte-repetition), not a replacement for
+    the boilerplate filter - a chapter can have junk of both kinds.
+
+    On a parse failure, defaults `is_content` to True (fail open) - a
+    caption that couldn't be parsed as JSON is a sign the model's response
+    was malformed, not evidence the image is decorative; treating it as
+    real content risks keeping one non-content image in the index, which is
+    a far smaller cost than the alternative (a parse hiccup silently
+    dropping a real, useful diagram).
     """
     rate_governor.reserve(rate_governor.estimate_diagram_caption_tokens())
     try:
@@ -456,20 +1042,57 @@ def caption_diagram_image(openai_raw_client, image_bytes: bytes, fmt: str,
                     {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}", "detail": "low"}},
                 ],
             }],
-            max_tokens=100,
+            max_tokens=150,
+            response_format={"type": "json_object"},
         ))
-        return (response.choices[0].message.content or "").strip()
+        raw = (response.choices[0].message.content or "").strip()
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            logger.warning(f"[NEW_RAG][Stage5] Diagram caption response wasn't valid JSON, "
+                            f"treating as content (fail open): {raw[:200]!r}")
+            return {"caption": raw, "is_content": True}
+        caption = (parsed.get("caption") or "").strip()
+        is_content = parsed.get("is_content")
+        if not isinstance(is_content, bool):
+            is_content = True
+        return {"caption": caption, "is_content": is_content}
     except Exception as e:
         logger.warning(f"[NEW_RAG][Stage5] Diagram captioning failed: {e}")
-        return ""
+        return {"caption": "", "is_content": True}
 
 
 # --- Table candidate heuristic (best-effort, see module docstring) ---
 
 _NUMERIC_TOKEN_RE = re.compile(r"^\d+(\.\d+)?%?$")
 
+# Bug fix (2026-08-25, found via live testing against jemh101.pdf, Class 10
+# Maths "Real Numbers"): the original heuristic ("3+ tokens, 2+ of them bare
+# numbers") was designed with a real data table in mind (a label followed by
+# a few numeric values per row, several similar rows in sequence) but
+# matches ordinary worked-math-example lines just as well - a line like
+# "7 x 11 x 23 = 1771  3 x 7 x 11 x 23 = 5313" is several bare numbers
+# separated by whitespace, exactly the same shape the heuristic looks for,
+# despite being an equation, not tabular data. Confirmed live: this
+# misclassified 5 chunks of ordinary prime-factorisation arithmetic as
+# chunk_type="table", each duplicating content that was already correctly
+# present in its enclosing "example"/"theorem" chunk - pure retrieval noise,
+# not new information.
+#
+# The reliable distinguishing signal: a real table row is a label plus
+# values, essentially never containing a literal equals sign or
+# multiplication symbol - a worked-math line almost always contains one or
+# both, since that's what doing arithmetic on a line looks like. Excluding
+# any line with an equation operator is a narrow, targeted fix specific to
+# the confirmed failure mode, not a general table-detection rewrite (the
+# module docstring's own honest "best-effort heuristic" limitation still
+# applies otherwise).
+_EQUATION_OPERATOR_RE = re.compile(r"[=×÷*]")
+
 
 def _line_looks_tabular(line: str) -> bool:
+    if _EQUATION_OPERATOR_RE.search(line):
+        return False
     tokens = line.split()
     if len(tokens) < 3:
         return False

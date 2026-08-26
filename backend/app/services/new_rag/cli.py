@@ -11,17 +11,41 @@ Two options only, per design:
      (raw pages, topic manifest, reconstructed chapter markdown, extracted
      diagram images, chunks).
   2) Ask a question - runs the new retrieval logic against whatever has been
-     ingested, then optionally generates an answer from the retrieved
-     context using the same answer-generation prompt the real app uses
-     (answer_service.generate_answer), called standalone. No orchestrator
-     call, no personalization, no TTS/video call - just retrieval plus that
-     one prompt, so the retrieved chunks and the answer they produce can
-     both be inspected and compared against the previous flow.
+     ingested, then optionally generates a comparison answer standalone (see
+     STALE-COMMENT CORRECTION below for what this answer actually is/isn't).
+     No orchestrator call, no personalization, no TTS/video call - just
+     retrieval plus one generation call, so the retrieved chunks can be
+     inspected directly.
 
-This does not import, call, or modify chat.py, the orchestrator, the
-personalization engine, or the existing textbooks_v2 collection - it is a
-fully separate, additive path (see docs/RAG_REDESIGN_PLAN.md, "Testing &
-Logging").
+This SCRIPT does not import, call, or modify chat.py, the orchestrator, or
+the personalization engine - that part is still true and this genuinely is
+a standalone-to-RUN tool, not called by any live request path.
+
+STALE-COMMENT CORRECTIONS (2026-08-25), because the DATA and PROMPT
+guarantees below are no longer accurate even though the script itself is
+still standalone:
+- "does not... modify the existing textbooks_v2 collection - it is a fully
+  separate, additive path" is misleading now: this script calls
+  rag_pipeline.py::ingest_book(), which (since the RAG process swap, see
+  docs/RAG_INTEGRATION_PLAN.md) is the SAME function books.py calls for
+  real uploads. Running option 1 here writes real chunks/vectors into the
+  live production textbooks_v3 Qdrant collection and the live production
+  Supabase "book-processing" bucket - NOT an isolated sandbox. It's true
+  this never touches the legacy textbooks_v2 collection, but "fully
+  separate, additive path" oversold that as "safe to run against
+  anything" - it isn't; running it against a real book_uuid mutates real
+  production data.
+- "the same answer-generation prompt the real app uses
+  (answer_service.generate_answer)" is simply wrong now: the live app's
+  actual answer path (chat.py -> run_orchestrator_pipeline in
+  backend/app/orchestrator_test/test_runner.py) generates text_narration
+  from a master orchestrator prompt BEFORE retrieval even runs, then only
+  revises it via ground_text_narration() using retrieved chunks -
+  answer_service.generate_answer() is not in that call chain at all (see
+  docs/IMAGE_PIPELINE_PLAN.md section 4.2 for how this was traced). The
+  answer this CLI option 2 produces is a genuinely different generation
+  path than what a live student query produces - useful for inspecting
+  retrieval quality, not a faithful preview of the live app's answer.
 """
 import json
 import os
@@ -338,9 +362,15 @@ def ask_question_flow():
         print(f"context preview:\n{package['context'][:400]}{'...' if len(package['context']) > 400 else ''}")
         print("-" * 70)
 
-        # Answer generation - same prompt/model the real app uses
-        # (answer_service.generate_answer), called standalone: no
-        # orchestrator, no personalization, no TTS/video call. Runs
+        # Answer generation via answer_service.generate_answer(), called
+        # standalone: no orchestrator, no personalization, no TTS/video
+        # call. NOTE (2026-08-25): this is NOT the same call chain the live
+        # app's real answers go through anymore (chat.py ->
+        # run_orchestrator_pipeline -> ground_text_narration, a master
+        # orchestrator prompt + retrieval-grounding revision, not this
+        # function) - see cli.py's module docstring for the full
+        # correction. Useful for inspecting retrieval quality, not a
+        # faithful preview of a live answer. Runs
         # automatically for every question (not gated behind a prompt) since
         # this is exactly what the report exists to capture: how the new
         # RAG's retrieved chunks change both the quick-answer text mode and

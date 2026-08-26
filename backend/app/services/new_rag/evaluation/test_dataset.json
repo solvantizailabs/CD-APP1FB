@@ -1,1 +1,163 @@
-[]
+[
+  {
+    "category": "direct",
+    "question": "What is an olfactory indicator?",
+    "expected_class": "10",
+    "expected_subject": "science",
+    "expected_source": "jesc102",
+    "expected_chapter": "2 Acids, Bases and Salts",
+    "expected_topic": "Activity: Testing Indicators",
+    "expected_concept": "olfactory indicators",
+    "expected_page": 18,
+    "expected_relevant_chunks": ["e4f2b533-0840-4e04-8f5b-f77dc078301c"],
+    "expected_answer_points": [
+      "An olfactory indicator is a substance whose odour changes in acidic or basic media.",
+      "Onion and vanilla are examples used to test for acids and bases by smell."
+    ]
+  },
+  {
+    "category": "why",
+    "question": "Why do multi-cellular organisms need a transportation system for oxygen and food, while single-celled organisms don't?",
+    "expected_class": "10",
+    "expected_subject": "science",
+    "expected_source": "jesc105",
+    "expected_chapter": "5 Life Processes",
+    "expected_topic": "What are Life Processes?",
+    "expected_concept": "diffusion vs transportation in multicellular organisms",
+    "expected_page": 79,
+    "expected_relevant_chunks": ["f01a7703-afdf-4252-acee-2f69380fc86f"],
+    "expected_answer_points": [
+      "In simple organisms, diffusion is enough because the entire body surface is in contact with the environment.",
+      "As body size and complexity increase, diffusion alone can't reach every cell fast enough, so a dedicated transport system is needed."
+    ]
+  },
+  {
+    "category": "how",
+    "question": "How do you write a chemical equation in a shorter, more concise way?",
+    "expected_class": "10",
+    "expected_subject": "science",
+    "expected_source": "jesc101",
+    "expected_chapter": "1 Chemical Reactions and Equations",
+    "expected_topic": "Writing a Chemical Equation",
+    "expected_concept": "chemical formulae and symbols",
+    "expected_page": 3,
+    "expected_relevant_chunks": ["092396fd-0a25-46a2-88b4-a5e5be02678f"],
+    "expected_answer_points": [
+      "Reactants and products are represented by their chemical formulae instead of full names.",
+      "Word equations are converted into symbolic chemical equations for conciseness."
+    ]
+  },
+  {
+    "category": "calculation",
+    "question": "John and Jivanti together have 45 marbles. Both lost 5 marbles each, and the product of their remaining marbles is 124. How do you represent this situation as a quadratic equation?",
+    "expected_class": "10",
+    "expected_subject": "maths",
+    "expected_source": "jemh104",
+    "expected_chapter": "QUADRATIC EQUATIONS",
+    "expected_topic": "Example 1: Representing Situations Mathematically",
+    "expected_concept": "forming a quadratic equation from a word problem",
+    "expected_page": 39,
+    "expected_relevant_chunks": ["062aa624-da9c-4605-aad3-ff1f9addef68"],
+    "expected_answer_points": [
+      "Let one person have x marbles after losing 5, so the other has (45-5-5)-x = 35-x.",
+      "Setting up x(35-x) = 124 and simplifying gives a quadratic equation in standard form."
+    ]
+  },
+  {
+    "category": "multi-concept",
+    "question": "How does the Fundamental Theorem of Arithmetic explain why every composite number can be written as a product of primes?",
+    "expected_class": "10",
+    "expected_subject": "maths",
+    "expected_source": "jemh101",
+    "expected_chapter": "REAL NUMBERS",
+    "expected_topic": "The Fundamental Theorem of Arithmetic",
+    "expected_concept": "prime factorisation, composite numbers",
+    "expected_page": 2,
+    "expected_relevant_chunks": ["722aac02-226a-42e2-a8a3-8d3bb6e2162d", "e01c2123-6a44-4c68-9a59-17aeb52e44ec"],
+    "expected_answer_points": [
+      "Every composite number can be expressed as a product of primes, and this factorisation is unique apart from the order of the factors.",
+      "This connects prime numbers (building blocks) to composite numbers (products of those blocks)."
+    ]
+  },
+  {
+    "category": "ambiguous",
+    "question": "What does sustainable actually mean here?",
+    "expected_class": "10",
+    "expected_subject": "social",
+    "expected_source": "jess101",
+    "expected_chapter": "DEVELOPMENT OF RESOURCES",
+    "expected_topic": "Sustainable Development",
+    "expected_concept": "sustainable development",
+    "expected_page": 2,
+    "expected_relevant_chunks": ["d2f046d3-4512-4dcb-9764-adc8611a3686"],
+    "expected_answer_points": [
+      "Sustainable development means development without damaging the environment.",
+      "Development in the present should not compromise the needs of future generations."
+    ],
+    "note": "Deliberately vague ('here' has no antecedent in isolation) - tests whether retrieval still surfaces the right chunk from lexical/semantic content alone, independent of follow-up resolution."
+  },
+  {
+    "category": "follow-up",
+    "question": "What about the balanced version of it, with equal atoms on both sides?",
+    "expected_class": "10",
+    "expected_subject": "science",
+    "expected_source": "jesc101",
+    "expected_chapter": "1 Chemical Reactions and Equations",
+    "expected_topic": "Balanced Chemical Equations",
+    "expected_concept": "law of conservation of mass, balancing equations",
+    "expected_page": 3,
+    "expected_relevant_chunks": ["461f6c50-9447-45ac-8287-900c03df2cac"],
+    "expected_answer_points": [
+      "A balanced chemical equation has an equal number of atoms of each element on both the reactant and product sides.",
+      "This follows from the law of conservation of mass."
+    ],
+    "note": "Phrased as a pronoun-dependent follow-up ('it') with no prior turn supplied - tests retrieval robustness to under-specified phrasing, not follow-up resolution itself (that's Phase 2's job)."
+  },
+  {
+    "category": "misspelled",
+    "question": "What is fotosynthesis and how do organisms get nutrition from it?",
+    "expected_class": "10",
+    "expected_subject": "science",
+    "expected_source": "jesc105",
+    "expected_chapter": "5 Life Processes",
+    "expected_topic": "Nutrition",
+    "expected_concept": "nutrition, energy from food",
+    "expected_page": 81,
+    "expected_relevant_chunks": ["04bc76ba-f37d-4695-b4bb-5528b22d9b9c"],
+    "expected_answer_points": [
+      "Organisms need energy and materials from outside their body, obtained through nutrition.",
+      "Energy is needed to maintain the body's state of order even without visible activity."
+    ]
+  },
+  {
+    "category": "cross-chapter",
+    "question": "When you factorise a quadratic equation to solve it, is that the same idea as breaking a number down into its prime factors?",
+    "expected_class": "10",
+    "expected_subject": "maths",
+    "expected_source": "jemh104",
+    "expected_chapter": "QUADRATIC EQUATIONS",
+    "expected_topic": "Quadratic Equations",
+    "expected_concept": "factorisation - prime factors vs algebraic factors",
+    "expected_page": 39,
+    "expected_relevant_chunks": ["91f94693-0274-4ab9-92cb-cd06b81ddb87", "722aac02-226a-42e2-a8a3-8d3bb6e2162d"],
+    "expected_answer_points": [
+      "A quadratic equation ax^2+bx+c=0 can be solved by factorising it into two linear factors.",
+      "This is a different (algebraic) use of 'factor' from the Fundamental Theorem of Arithmetic's prime factorisation of numbers, even though both use the word 'factor'."
+    ],
+    "note": "Spans two chapters within the same subject (REAL NUMBERS and QUADRATIC EQUATIONS) - tests that retrieval doesn't wrongly collapse to only one chapter's chunks when a question conceptually bridges both."
+  },
+  {
+    "category": "out-of-syllabus",
+    "question": "What is the derivative of x squared with respect to x?",
+    "expected_class": "10",
+    "expected_subject": "maths",
+    "expected_source": null,
+    "expected_chapter": null,
+    "expected_topic": null,
+    "expected_concept": "calculus / differentiation",
+    "expected_page": null,
+    "expected_relevant_chunks": [],
+    "expected_answer_points": [],
+    "note": "Calculus is not part of the NCERT Class 10 syllabus - correct behaviour is to retrieve nothing relevant (low confidence / no match), not to hallucinate a chunk. expected_relevant_chunks is deliberately empty to represent this. IMPORTANT: retrieval_eval.py's evaluate_case() currently treats an empty expected_relevant_chunks as 'not yet recorded' and skips scoring the case entirely - this case is included for completeness per the doc 03 §26 category spread, but will not actually be scored until the harness is extended to distinguish 'correctly-empty' from 'not filled in yet'. Flagged, not fixed, since that's a harness-logic change outside Phase 1's plumbing-fix scope."
+  }
+]
