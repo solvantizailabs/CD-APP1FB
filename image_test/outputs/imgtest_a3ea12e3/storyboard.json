@@ -1,0 +1,179 @@
+[
+  {
+    "scene_no": 1,
+    "purpose": "Introduce the concept of soil erosion.",
+    "beat_shape": "opener",
+    "template_id": "title_slide",
+    "template_selection_reasoning": "The title slide is essential for setting the stage for the lesson, providing a clear introduction to the topic of soil erosion.",
+    "camera": {
+      "zoom": 1.1,
+      "pan_x": 0,
+      "pan_y": 0,
+      "target_node": "main_concept"
+    },
+    "teacher_script": "Today, we will explore soil erosion, a critical environmental issue. Understanding its causes and effects is vital for sustainable land management.",
+    "template_data": {
+      "title": "Understanding Soil Erosion",
+      "subtitle": "Exploring Causes, Effects, and Conservation"
+    },
+    "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_a3ea12e3/scene_1.wav"
+  },
+  {
+    "scene_no": 2,
+    "purpose": "Explain what soil erosion is and its natural and human-induced causes.",
+    "beat_shape": "hierarchy",
+    "template_id": "concept_diagram",
+    "template_selection_reasoning": "A concept diagram effectively illustrates the main idea of soil erosion and its various causes, allowing for a clear visual representation of the relationships.",
+    "camera": {
+      "zoom": 1.1,
+      "pan_x": 0,
+      "pan_y": 0,
+      "target_node": "main_concept"
+    },
+    "teacher_script": "Soil erosion is the process of soil being worn away by natural forces like wind and water, as well as human activities such as deforestation and overgrazing. Let's look at these causes in detail.",
+    "template_data": {
+      "title": "Causes of Soil Erosion",
+      "central_node": {
+        "text": "Soil Erosion",
+        "icon": "earthquake"
+      },
+      "leaf_nodes": [
+        {
+          "text": "Natural Forces",
+          "icon": "wind"
+        },
+        {
+          "text": "Human Activities",
+          "icon": "factory"
+        }
+      ]
+    },
+    "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_a3ea12e3/scene_2.wav"
+  },
+  {
+    "scene_no": 3,
+    "purpose": "Illustrate the effects of soil erosion on land and agriculture.",
+    "beat_shape": "process_spatial",
+    "template_id": "illustrated_scene",
+    "template_selection_reasoning": "An illustrated scene can visually depict the consequences of soil erosion, making it easier for students to grasp the impact on agriculture and land usability.",
+    "camera": {
+      "zoom": 1.1,
+      "pan_x": 0,
+      "pan_y": 0,
+      "target_node": "main_concept"
+    },
+    "teacher_script": "The effects of soil erosion can be devastating. It leads to the loss of fertile topsoil, making land unfit for cultivation and reducing agricultural productivity.",
+    "template_data": {
+      "title": "Effects of Soil Erosion",
+      "animation_action": "rise",
+      "elements": [
+        {
+          "type": "path",
+          "path_data": "M 100 600 Q 300 400 500 600",
+          "stroke_color": "#8B4513",
+          "stroke_width": 4,
+          "fill": "none"
+        },
+        {
+          "type": "circle",
+          "cx": 300,
+          "cy": 500,
+          "r": 60,
+          "stroke_color": "#228B22",
+          "stroke_width": 2,
+          "fill": "rgba(34,139,34,0.5)"
+        },
+        {
+          "type": "circle",
+          "cx": 700,
+          "cy": 600,
+          "r": 60,
+          "stroke_color": "#B22222",
+          "stroke_width": 2,
+          "fill": "rgba(178,34,34,0.5)"
+        },
+        {
+          "type": "line",
+          "x1": 300,
+          "y1": 500,
+          "x2": 700,
+          "y2": 600,
+          "stroke_color": "#FFD700",
+          "stroke_width": 2,
+          "dash_array": "5 5"
+        }
+      ]
+    },
+    "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_a3ea12e3/scene_3.wav"
+  },
+  {
+    "scene_no": 4,
+    "purpose": "Discuss soil conservation techniques to combat erosion.",
+    "beat_shape": "process_spatial",
+    "template_id": "image_scene",
+    "template_selection_reasoning": "Using a real image of soil conservation techniques provides a concrete example of how these methods can be applied in practice.",
+    "camera": {
+      "zoom": 1.1,
+      "pan_x": 0,
+      "pan_y": 0,
+      "target_node": "main_concept"
+    },
+    "teacher_script": "To combat soil erosion, various conservation techniques can be employed, such as contour ploughing and terrace farming. These methods help retain soil and water.",
+    "template_data": {
+      "title": "Soil Conservation Techniques",
+      "image_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/book-processing/Class10_social/chapters/jess101/05_diagrams/images/p10_4_Im2.jpg",
+      "annotations": [
+        {
+          "x": 10,
+          "y": 10,
+          "text": "Gully Erosion"
+        },
+        {
+          "x": 20,
+          "y": 20,
+          "text": "Terrace Farming"
+        }
+      ]
+    },
+    "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_a3ea12e3/scene_4.wav"
+  },
+  {
+    "scene_no": 5,
+    "purpose": "Summarize the lesson on soil erosion and conservation.",
+    "beat_shape": "hierarchy",
+    "template_id": "taxonomy_tree",
+    "template_selection_reasoning": "A taxonomy tree effectively summarizes the key points discussed in the lesson, showing the hierarchy of concepts related to soil erosion and conservation.",
+    "camera": {
+      "zoom": 1.1,
+      "pan_x": 0,
+      "pan_y": 0,
+      "target_node": "main_concept"
+    },
+    "teacher_script": "In summary, soil erosion is a significant issue caused by both natural and human factors. Understanding and implementing conservation techniques is crucial for sustainable land use.",
+    "template_data": {
+      "title": "Summary of Soil Erosion",
+      "root": {
+        "label": "Soil Erosion",
+        "icon": "earthquake",
+        "children": [
+          {
+            "label": "Causes",
+            "icon": "wind",
+            "children": []
+          },
+          {
+            "label": "Effects",
+            "icon": "factory",
+            "children": []
+          },
+          {
+            "label": "Conservation Techniques",
+            "icon": "gear",
+            "children": []
+          }
+        ]
+      }
+    },
+    "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_a3ea12e3/scene_5.wav"
+  }
+]

@@ -247,7 +247,7 @@ def check_global_query_cache(raw_query: str, class_name: str, subject: str = Non
         return None
 
 
-def save_to_global_query_cache(raw_query: str, class_name: str, subject: str, orchestrator_output: dict, interactive_url: str = None, video_scenes: list = None):
+def save_to_global_query_cache(raw_query: str, class_name: str, subject: str, orchestrator_output: dict, interactive_url: str = None, video_scenes: list = None, query_json_url: str = None):
     """
     Saves a query execution result into the nested 'query_cache' collection.
 
@@ -281,6 +281,12 @@ def save_to_global_query_cache(raw_query: str, class_name: str, subject: str, or
         "orchestrator_output": json.dumps(orchestrator_output),
         "interactive_url": interactive_url,
         "video_scenes": json.dumps(video_scenes) if video_scenes else None,
+        # Per-query debug record (docs/RAG_INTEGRATION_PLAN.md §9.2.D): carried
+        # forward so a cache-hit turn still resolves to the ORIGINATING turn's
+        # full debug JSON (retrieved chunks, confidence, context sent to the
+        # model) instead of leaving the debug trail empty just because no new
+        # retrieval ran for this particular hit.
+        "query_json_url": query_json_url,
         "created_at": datetime.now().isoformat()
     }
 

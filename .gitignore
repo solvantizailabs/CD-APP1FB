@@ -63,6 +63,8 @@ bm25_indices/
 chpchunks/
 summary/
 backend/app/orchestrator_test/test_outputs/
+backend/app/services/new_rag/outputs/
+_query_debug.json
 
 # ============ SYSTEM FILES ============
 .DS_Store

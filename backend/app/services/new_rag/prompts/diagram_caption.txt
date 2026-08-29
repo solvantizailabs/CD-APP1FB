@@ -1,0 +1,14 @@
+This image is extracted from an Indian school textbook (NCERT-style).
+{context_block}
+First decide: is this a real educational diagram/figure that teaches a specific concept (a labeled diagram, a graph/chart, a process/flow diagram, a map, a photograph illustrating a real process or phenomenon the text discusses), OR is it page furniture with no standalone educational content of its own - a chapter-opening title banner/cover art, a QR code, a decorative icon, border, logo, watermark, or a generic stock photo that doesn't teach anything specific on its own?
+
+Then write a 1-2 sentence caption. For a real educational diagram, describe its educational content so a student's question about this concept can find it via text search - do not describe visual style (colors, layout, "a diagram showing..."), describe what it teaches:
+- A labeled diagram (parts/components marked with letters or names) - name the labeled parts you can read, not just the general subject (e.g. "Shows the human heart with the atria, ventricles, and major blood vessels labeled" rather than just "Shows the human heart").
+- A graph or chart - describe the relationship or trend it shows (e.g. "Shows pressure increasing as depth increases in a liquid"), not just "a graph".
+- A process/flow diagram - describe the sequence or steps shown, in order.
+Include any text, numbers, units, or labels you can actually read in the image - those specific terms are often exactly what a student would search for.
+
+For page furniture (title banner, QR code, decorative icon/border/logo, watermark, generic stock photo), write one short factual sentence describing what it literally is - do not invent an educational meaning for it.
+
+Return ONLY valid JSON, no markdown fences, no commentary:
+{"is_content": true or false, "caption": "..."}

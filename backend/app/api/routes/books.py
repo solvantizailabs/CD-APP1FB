@@ -11,12 +11,14 @@ from fastapi.responses import JSONResponse
 from pypdf import PdfReader
 from qdrant_client import models
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from google.cloud import firestore
 
 from backend.app.services.retrieval import qdrant_service as qdrant
 from backend.app.services.retrieval import local_chap_service
 from backend.app.core import firestore_service
 from backend.app.core.firebase.firebase_init import db, bucket
 from backend.app.services.chat.answer_service import generate_chapter_summary
+from backend.app.services.new_rag.pipeline.rag_pipeline import ingest_book
 
 logger = logging.getLogger(__name__)
 
@@ -36,229 +38,18 @@ UPLOADS_DIR = os.path.join(PROJECT_ROOT, "uploads")
 if not os.path.exists(UPLOADS_DIR):
     os.makedirs(UPLOADS_DIR)
 
-class BookCreateRequest(BaseModel):
-    class_name: str
-    subject: str
-    filename: str
-    chapters: List[Dict]
-
-
-async def process_book_in_background(book_uuid: str, pdf_path: str, class_name: str, subject: str, chapters: List[Dict]):
+def _ingestion_job_ref(class_name: str, subject: str, book_uuid: str):
     """
-    Processes the book in the background, creates summaries, and saves to databases.
+    Firestore doc backing GET /api/books/status - a real, durable job-progress
+    record (not a workaround), so a terminal/CLI caller (or any future caller)
+    can poll a stable endpoint for "is this batch-ingest actually done yet"
+    without reading local disk or importing pipeline internals. Lives under
+    the same class/subject path as the summary doc, in its own subcollection
+    so it never collides with the chapters[] summary document itself.
     """
-    print(f"\n{'='*100}")
-    print(f"[PROCESS] ========== BOOK PROCESSING START ==========")
-    print(f"[PROCESS] Book: Class {class_name} - {subject.capitalize()}")
-    print(f"[PROCESS] UUID: {book_uuid}")
-    print(f"[PROCESS] PDF: {os.path.basename(pdf_path)}")
-    print(f"[PROCESS] Total Chapters: {len(chapters)}")
-    print(f"{'='*100}\n")
-    
-    logger.info(f"BACKGROUND TASK STARTED for book {book_uuid}")
-
-    try:
-        # Initialize services
-        print(f"[PROCESS] Initializing services...")
-        qdrant.initialize()
-
-        # Raise pypdf's default zlib decompression guard (75MB) - see the
-        # matching comment in process_batch_ingest_in_background for why.
-        try:
-            import pypdf.filters as _pypdf_filters
-            _pypdf_filters.ZLIB_MAX_OUTPUT_LENGTH = 500_000_000
-        except Exception:
-            pass
-
-        reader = PdfReader(pdf_path)
-        parent_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=2000,
-            chunk_overlap=400,
-            separators=["\n\n", "\n", " ", ""]
-        )
-        child_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=400,
-            chunk_overlap=100,
-            separators=["\n\n", "\n", ".", " ", ""]
-        )
-        print(f"[PROCESS] ✓ Services initialized\n")
-
-        chapters_to_process = chapters
-        if not chapters_to_process:
-            raise ValueError("No confirmed chapters found to process.")
-
-        all_chapters_with_summaries = []
-
-        # Steps 1 & 3: Generate Summaries and Upload Chunks to Qdrant
-        for i, chapter_data in enumerate(chapters_to_process):
-            chapter_name = chapter_data['chapter_name']
-            
-            print(f"[PROCESS] ┌─ [{i+1}/{len(chapters_to_process)}] {chapter_name}")
-
-            start_page = chapter_data.get("pdf_startpg")
-            end_page = chapter_data.get("pdf_endpg")
-            chp_start = chapter_data.get("chpstpage")
-            chp_end = chapter_data.get("chpendpage")
-
-            if start_page is None or end_page is None:
-                print(f"[PROCESS] │  ✗ Skipping - missing page numbers\n")
-                continue
-            
-            print(f"[PROCESS] │  Pages: PDF {start_page}-{end_page}, Chapter {chp_start}-{chp_end}")
-            print(f"[PROCESS] │  Extracting and chunking text from PDF...")
-
-            # Isolate each chapter's processing: one bad PDF page/chapter
-            # must not abort the remaining chapters in this book.
-            try:
-                points_to_upload = []
-                chapter_parent_chunks = []
-
-                # Process page by page
-                for page_num in range(start_page - 1, end_page):
-                    if page_num < 0 or page_num >= len(reader.pages):
-                        continue
-
-                    try:
-                        page_text = reader.pages[page_num].extract_text() or ""
-                    except Exception as page_err:
-                        print(f"[PROCESS] │  ⚠ Skipping page {page_num + 1} - extraction failed: {page_err}")
-                        continue
-                    if not page_text.strip():
-                        continue
-
-                    # Split page text into parent chunks
-                    parent_chunks = parent_splitter.split_text(page_text)
-                    for parent_text in parent_chunks:
-                        parent_text = parent_text.strip()
-                        if not parent_text:
-                            continue
-
-                        chapter_parent_chunks.append(parent_text)
-
-                        # Split parent chunk into child chunks
-                        child_chunks = child_splitter.split_text(parent_text)
-                        for chunk_text in child_chunks:
-                            chunk_text = chunk_text.strip()
-                            if not chunk_text:
-                                continue
-
-                            chunk_id = str(uuid.uuid4())
-                            qdrant_id = str(uuid.uuid4())
-
-                            # Generate embedding for child text
-                            embedding = qdrant.local_embedder.encode(chunk_text).tolist()
-
-                            # Compute actual printed page
-                            current_printed_page = chp_start + (page_num - (start_page - 1)) if chp_start is not None else 1
-
-                            points_to_upload.append(
-                                models.PointStruct(
-                                    id=qdrant_id,
-                                    vector=embedding,
-                                    payload={
-                                        "book_uuid": book_uuid,
-                                        "chapter_id": str(i + 1),
-                                        "chunk_id": chunk_id,
-                                        "text": chunk_text,
-                                        "parent_text": parent_text,
-                                        "chapter_name": chapter_name,
-                                        "pdf_page": page_num + 1,
-                                        "pdf_startpg": start_page,
-                                        "pdf_endpg": end_page,
-                                        "chpstpage": current_printed_page,
-                                        "chpendpage": current_printed_page,
-                                    },
-                                )
-                            )
-
-                if points_to_upload:
-                    print(f"[PROCESS] │  ✓ Saved {len(points_to_upload)} chunks to Qdrant")
-
-                    # Upload in batches to prevent timeout
-                    BATCH_SIZE = 50  # Upload 50 points at a time
-                    total_points = len(points_to_upload)
-
-                    for batch_start in range(0, total_points, BATCH_SIZE):
-                        batch_end = min(batch_start + BATCH_SIZE, total_points)
-                        batch = points_to_upload[batch_start:batch_end]
-
-                        print(f"[PROCESS] │  Uploading batch {batch_start+1}-{batch_end} of {total_points}...")
-
-                        # Retry logic for network issues
-                        max_retries = 3
-                        for attempt in range(max_retries):
-                            try:
-                                qdrant.client.upsert(
-                                    collection_name=qdrant.COLLECTION_NAME,
-                                    points=batch,
-                                    wait=True
-                                )
-                                print(f"[PROCESS] │  ✓ Batch uploaded successfully")
-                                break  # Success, exit retry loop
-                            except Exception as e:
-                                if attempt < max_retries - 1:
-                                    wait_time = (attempt + 1) * 2  # 2, 4, 6 seconds
-                                    print(f"[PROCESS] │  ⚠️ Upload failed (attempt {attempt+1}/{max_retries}), retrying in {wait_time}s...")
-                                    import time
-                                    time.sleep(wait_time)
-                                else:
-                                    print(f"[PROCESS] │  ✗ Upload failed after {max_retries} attempts: {e}")
-                                    raise  # Re-raise after all retries exhausted
-
-                # Generate summary
-                print(f"[PROCESS] │  Generating summary with LLM...")
-                summary_text = generate_chapter_summary(class_name, subject, chapter_name, chapter_parent_chunks)
-                print(f"[PROCESS] │  ✓ Summary generated ({len(summary_text)} chars)")
-
-                chapter_summary_data = {
-                    "sno": i + 1,  # Serial number starting from 1
-                    "chapter_name": chapter_name,
-                    "summary": summary_text,
-                    "pdf_startpg": chapter_data.get("pdf_startpg"),
-                    "pdf_endpg": chapter_data.get("pdf_endpg"),
-                    "chpstpage": chapter_data.get("chpstpage"),
-                    "chpendpage": chapter_data.get("chpendpage"),
-                }
-
-                # Log what we're saving to Firestore for debugging
-                print(f"[PROCESS] │  ✓ Firestore data for chapter {i + 1}:")
-                print(f"[PROCESS] │    - sno: {i + 1}")
-                print(f"[PROCESS] │    - chapter_name: {chapter_name}")
-                print(f"[PROCESS] │    - pdf_startpg: {chapter_data.get('pdf_startpg')}")
-                print(f"[PROCESS] │    - pdf_endpg: {chapter_data.get('pdf_endpg')}")
-                print(f"[PROCESS] │    - chpstpage: {chapter_data.get('chpstpage')}")
-                print(f"[PROCESS] │    - chpendpage: {chapter_data.get('chpendpage')}")
-                print(f"[PROCESS] │    - summary_length: {len(summary_text)} chars")
-
-                all_chapters_with_summaries.append(chapter_summary_data)
-                print(f"[PROCESS] └─ ✓ Chapter complete\n")
-            except Exception as chapter_err:
-                print(f"[PROCESS] │  ✗ Chapter failed, skipping to next: {chapter_err}")
-                logger.error(f"Chapter '{chapter_name}' failed during book ingestion: {chapter_err}", exc_info=True)
-                print(f"[PROCESS] └─ Skipped {chapter_name}\n")
-                continue
-
-        # Step 4: Save single summary document for LLM context
-        print(f"[PROCESS] Saving {len(all_chapters_with_summaries)} summaries to Firestore...")
-        firestore_service.save_summary_document(
-            class_name=class_name,
-            subject=subject,
-            book_uuid=book_uuid,
-            chapters=all_chapters_with_summaries
-        )
-        print(f"[PROCESS] ✓ Summaries saved to Firestore\n")
-
-        print(f"{'='*100}")
-        print(f"[PROCESS] ========== BOOK PROCESSING COMPLETE ==========")
-        print(f"[PROCESS] ✓ {len(chapters_to_process)} chapters processed")
-        print(f"[PROCESS] ✓ All data saved to Qdrant and Firestore")
-        print(f"{'='*100}\n")
-
-    except Exception as e:
-        print(f"\n[PROCESS] ✗ ERROR: {e}\n")
-        logger.error(f"BACKGROUND TASK FAILED for book {book_uuid}: {e}", exc_info=True)
-
-    logger.info(f"Finished background processing for book {book_uuid}")
+    return (db.collection("classes").document(class_name)
+            .collection("subjects").document(subject.lower())
+            .collection("ingestion_jobs").document(book_uuid))
 
 
 async def process_batch_ingest_in_background(book_uuid: str, class_name: str, subject: str, chapters: List[Dict]):
@@ -271,38 +62,34 @@ async def process_batch_ingest_in_background(book_uuid: str, class_name: str, su
     print(f"[PROCESS BATCH] UUID: {book_uuid}")
     print(f"[PROCESS BATCH] Total Chapters: {len(chapters)}")
     print(f"{'='*100}\n")
-    
+
+    job_ref = _ingestion_job_ref(class_name, subject, book_uuid)
+    job_ref.set({
+        "status": "processing",
+        "book_uuid": book_uuid,
+        "class_name": class_name,
+        "subject": subject,
+        "total_chapters": len(chapters),
+        "started_at": firestore.SERVER_TIMESTAMP,
+        "results": [],
+    })
+
     try:
-        # Initialize services
+        # Initialize services (still needed: qdrant.book_has_content() and other
+        # textbooks_v2-era helpers elsewhere in the app still read qdrant.client;
+        # new_rag's ingest_book() below opens its own textbooks_v3 client).
         qdrant.initialize()
-
-        # Raise pypdf's default zlib decompression guard (75MB) - it's a
-        # zip-bomb defense meant for untrusted public uploads, but this path
-        # only ever processes admin-uploaded, trusted curriculum PDFs, and a
-        # single dense diagram/image page can legitimately decompress past
-        # the default. Without this, a single such page previously aborted
-        # the ENTIRE multi-chapter batch (see per-chapter isolation below for
-        # the other half of this fix).
-        try:
-            import pypdf.filters as _pypdf_filters
-            _pypdf_filters.ZLIB_MAX_OUTPUT_LENGTH = 500_000_000
-        except Exception:
-            pass
-
-        parent_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=2000,
-            chunk_overlap=400,
-            separators=["\n\n", "\n", " ", ""]
-        )
-        child_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=400,
-            chunk_overlap=100,
-            separators=["\n\n", "\n", ".", " ", ""]
-        )
 
         all_chapters_with_summaries = []
 
         for i, chapter_data in enumerate(chapters):
+            # Pre-analyze's chapter_name is only ever a shallow, first-2-page
+            # guess used to label the pre-upload confirmation table - it must
+            # never be passed into ingest_book() as an override, since
+            # new_rag's own Stage 2 detection (reading the FULL chapter text)
+            # is strictly more reliable at this. `chapter_name` here is
+            # reassigned below to the pipeline's own detected title as soon
+            # as ingest_book() returns it.
             chapter_name = chapter_data['chapter_name']
             filename = chapter_data.get('filename')
             chp_start = chapter_data.get("chpstpage")
@@ -325,84 +112,74 @@ async def process_batch_ingest_in_background(book_uuid: str, class_name: str, su
             # must not abort the remaining chapters in the batch. Previously
             # an unhandled exception here (e.g. a pypdf decompression error)
             # propagated to the top-level catch-all and silently killed
-            # every chapter after the failing one.
+            # every chapter after the failing one. ingest_book() itself is
+            # internally per-stage fail-safe (returns a blocked/failed status
+            # rather than raising), but this try/except is the outer net for
+            # anything unexpected (e.g. a raised exception from a bug), same
+            # role it always had.
             try:
-                reader = PdfReader(pdf_path)
-                num_pages = len(reader.pages)
-                points_to_upload = []
-                chapter_parent_chunks = []
+                # RAG process swap (2026-08-21): ingestion/chunking/embedding
+                # now runs through new_rag's pipeline (textbooks_v3, topic-
+                # aligned parent/child chunks, dense+sparse vectors) instead
+                # of the inline RecursiveCharacterTextSplitter + local_embedder
+                # logic that used to live here. Everything OUTSIDE this call -
+                # the per-chapter isolation, the [PROCESS BATCH] log skeleton,
+                # the Firestore write below - is unchanged. See
+                # docs/RAG_INTEGRATION_PLAN.md §4.1/§6.
+                print(f"[PROCESS BATCH] │  Ingesting via new_rag pipeline...")
+                ingest_report = ingest_book(
+                    pdf_path=pdf_path,
+                    class_name=class_name,
+                    subject=subject,
+                    chapter_name=None,  # let new_rag's own Stage 2 detection name the
+                                        # chapter from the full chapter text - the
+                                        # pre-analyze guess above must never override it
+                    book_uuid=book_uuid,  # reuse the SAME book_uuid this route already computed,
+                                          # so textbooks_v2 and textbooks_v3 agree on identity
+                )
+                print(f"[PROCESS BATCH] │  Ingesting via new_rag pipeline (status={ingest_report['status']})")
+                # Adopt the pipeline's own detected name for everything downstream
+                # (summary generation, Firestore doc, logging) - it read the full
+                # chapter text, the pre-analyze guess above only saw 2 pages.
+                chapter_name = ingest_report.get("chapter_name") or chapter_name
 
-                for page_num in range(num_pages):
-                    try:
-                        page_text = reader.pages[page_num].extract_text() or ""
-                    except Exception as page_err:
-                        print(f"[PROCESS BATCH] │  ⚠ Skipping page {page_num + 1}/{num_pages} - extraction failed: {page_err}")
-                        continue
-                    if not page_text.strip():
-                        continue
+                if ingest_report["status"] == "skipped_non_chapter":
+                    # NOT a failure - the pipeline correctly recognized this
+                    # file as front/back matter (answer key, preface, table of
+                    # contents) and excluded it before ever running topic
+                    # detection, exactly as designed. Found via real pilot
+                    # testing (2026-08-21): this used to fall into the
+                    # RuntimeError branch below and print a scary
+                    # "Chapter failed" + full traceback for a case that was
+                    # never actually an error - fixed to log plainly and move
+                    # on instead.
+                    print(f"[PROCESS BATCH] │  ○ Correctly excluded (not a real chapter): {ingest_report.get('message')}")
+                    print(f"[PROCESS BATCH] └─ Skipped {chapter_name} (front/back matter)\n")
+                    job_ref.update({"results": firestore.ArrayUnion([{
+                        "filename": filename, "chapter_name": chapter_name,
+                        "status": "skipped_non_chapter", "message": ingest_report.get("message"),
+                    }])})
+                    continue
 
-                    parent_chunks = parent_splitter.split_text(page_text)
-                    for parent_text in parent_chunks:
-                        parent_text = parent_text.strip()
-                        if not parent_text:
-                            continue
+                if ingest_report["status"] != "ingested":
+                    raise RuntimeError(
+                        f"new_rag ingestion did not complete (status={ingest_report['status']}): "
+                        f"{ingest_report.get('message')}"
+                    )
 
-                        chapter_parent_chunks.append(parent_text)
+                print(f"[PROCESS BATCH] │  ✓ {ingest_report.get('message')}")
 
-                        child_chunks = child_splitter.split_text(parent_text)
-                        for chunk_text in child_chunks:
-                            chunk_text = chunk_text.strip()
-                            if not chunk_text:
-                                continue
+                new_rag_chapter_id = ingest_report["chapter_id"]
+                parent_chunk_texts = [p.get("text", "") for p in ingest_report.get("parent_chunks", [])]
 
-                            chunk_id = str(uuid.uuid4())
-                            qdrant_id = str(uuid.uuid4())
-
-                            embedding = qdrant.local_embedder.encode(chunk_text).tolist()
-
-                            # Calculate printed page based on PDF page offset
-                            current_printed_page = chp_start + page_num if chp_start is not None else (page_num + 1)
-
-                            points_to_upload.append(
-                                models.PointStruct(
-                                    id=qdrant_id,
-                                    vector=embedding,
-                                    payload={
-                                        "book_uuid": book_uuid,
-                                        "chapter_id": chapter_id,
-                                        "chunk_id": chunk_id,
-                                        "text": chunk_text,
-                                        "parent_text": parent_text,
-                                        "chapter_name": chapter_name,
-                                        "pdf_page": page_num + 1,
-                                        "pdf_startpg": 1,
-                                        "pdf_endpg": num_pages,
-                                        "chpstpage": current_printed_page,
-                                        "chpendpage": current_printed_page,
-                                    },
-                                )
-                            )
-
-                if points_to_upload:
-                    print(f"[PROCESS BATCH] │  ✓ Saved {len(points_to_upload)} chunks to Qdrant")
-
-                    # Upload to Qdrant
-                    BATCH_SIZE = 50
-                    for batch_start in range(0, len(points_to_upload), BATCH_SIZE):
-                        batch_end = min(batch_start + BATCH_SIZE, len(points_to_upload))
-                        batch = points_to_upload[batch_start:batch_end]
-                        qdrant.client.upsert(
-                            collection_name=qdrant.COLLECTION_NAME,
-                            points=batch,
-                            wait=True
-                        )
-
-                # Generate summary for this chapter
+                # Generate summary for this chapter - same call as before,
+                # now fed new_rag's topic-aligned parent chunks instead of the
+                # old fixed-size 2000-char parent chunks.
                 print(f"[PROCESS BATCH] │  Generating summary via Gemini...")
 
                 summary = ""
                 try:
-                    summary = generate_chapter_summary(class_name, subject, chapter_name, chapter_parent_chunks[:20])
+                    summary = generate_chapter_summary(class_name, subject, chapter_name, parent_chunk_texts[:20])
                     print(f"[PROCESS BATCH] │  ✓ Summary generated")
                 except Exception as e:
                     print(f"[PROCESS BATCH] │  ✗ Summary generation failed: {e}")
@@ -411,11 +188,22 @@ async def process_batch_ingest_in_background(book_uuid: str, class_name: str, su
                 all_chapters_with_summaries.append({
                     "chapter_name": chapter_name,
                     "chapter_id": chapter_id,
+                    # new_rag_chapter_id: the UUID new_rag actually stored on every
+                    # textbooks_v3 chunk payload for this chapter (distinct from the
+                    # admin-facing sequential "chapter_id" above, which is unrelated
+                    # and left untouched for backward compatibility). This is what
+                    # lets the orchestrator later narrow retrieval to one chapter by
+                    # ID instead of only by name - see docs/RAG_INTEGRATION_PLAN.md §4.2.
+                    "new_rag_chapter_id": new_rag_chapter_id,
                     "chpstpage": chp_start,
                     "chpendpage": chp_end,
                     "summary": summary
                 })
                 print(f"[PROCESS BATCH] └─ Done processing {chapter_name}\n")
+                job_ref.update({"results": firestore.ArrayUnion([{
+                    "filename": filename, "chapter_name": chapter_name,
+                    "status": "ingested", "new_rag_chapter_id": new_rag_chapter_id,
+                }])})
             except Exception as chapter_err:
                 # Isolation boundary: a failure anywhere in this chapter's
                 # processing (bad page, embedding error, Qdrant hiccup) must
@@ -423,22 +211,42 @@ async def process_batch_ingest_in_background(book_uuid: str, class_name: str, su
                 print(f"[PROCESS BATCH] │  ✗ Chapter failed, skipping to next: {chapter_err}")
                 logger.error(f"Chapter '{chapter_name}' ({filename}) failed during batch ingestion: {chapter_err}", exc_info=True)
                 print(f"[PROCESS BATCH] └─ Skipped {chapter_name}\n")
+                job_ref.update({"results": firestore.ArrayUnion([{
+                    "filename": filename, "chapter_name": chapter_name,
+                    "status": "failed", "error": str(chapter_err),
+                }])})
                 continue
 
         # Save all summaries to Firestore in the consolidated content path: /classes/{class}/subjects/{subject}
+        # Merge by chapter_name rather than blindly overwriting the whole
+        # chapters[] array (2026-08-21, found during real pilot testing: a
+        # partial retry - re-running only the chapters that failed the first
+        # time - used to silently WIPE every other already-successful
+        # chapter's summary from this doc, even though their Qdrant chunks
+        # were untouched and still fully searchable. A retry batch is a real,
+        # expected workflow now (Stage2's bounded retry above still isn't a
+        # 100% guarantee), so this write has to be safe for that case, not
+        # just for a single full 17-chapter run.
         print(f"[PROCESS BATCH] Saving summaries to Firestore...")
         doc_ref = db.collection("classes").document(class_name).collection("subjects").document(subject.lower())
+        existing_doc = doc_ref.get()
+        existing_chapters = (existing_doc.to_dict() or {}).get("chapters", []) if existing_doc.exists else []
+        merged_by_name = {c.get("chapter_name"): c for c in existing_chapters}
+        for c in all_chapters_with_summaries:
+            merged_by_name[c.get("chapter_name")] = c
         doc_ref.set({
             "book_uuid": book_uuid,
             "filename": "batch_upload",
-            "chapters": all_chapters_with_summaries
+            "chapters": list(merged_by_name.values())
         })
-        print(f"[PROCESS BATCH] [SUCCESS] All summaries successfully written to Firestore path: classes/{class_name}/subjects/{subject}")
+        print(f"[PROCESS BATCH] [SUCCESS] All summaries successfully written to Firestore path: classes/{class_name}/subjects/{subject} ({len(merged_by_name)} total chapters, {len(all_chapters_with_summaries)} from this run)")
         print(f"[PROCESS BATCH] ========== BATCH PROCESSING SUCCESS ==========\n")
-        
+        job_ref.update({"status": "completed", "completed_at": firestore.SERVER_TIMESTAMP})
+
     except Exception as e:
         print(f"[PROCESS BATCH] [FATAL ERROR] Ingestion failed: {e}")
         logger.error(f"Fatal error in batch ingestion background task: {e}", exc_info=True)
+        job_ref.update({"status": "failed", "error": str(e), "completed_at": firestore.SERVER_TIMESTAMP})
 
 
 @router.post("/api/upload")
@@ -454,67 +262,6 @@ async def upload_file(file: UploadFile = File(...)):
         shutil.copyfileobj(file.file, buffer)
         
     return {"filename": safe_filename}
-
-
-@router.post("/api/books")
-async def create_book_and_process(
-    background_tasks: BackgroundTasks,
-    book_data: BookCreateRequest
-):
-    """
-    Starts the background processing task for a book.
-    """
-    logger.info(f"Received request to process and save book with data: {book_data.dict()}")
-    try:
-        class_name = book_data.class_name
-        subject = book_data.subject
-        filename = book_data.filename
-        chapters = book_data.chapters
-
-        logger.info(f"Received request to process and save book: {filename}")
-        pdf_path = os.path.join(UPLOADS_DIR, os.path.basename(filename))
-        if not os.path.exists(pdf_path):
-            raise HTTPException(status_code=404, detail=f"Uploaded file not found: {filename}")
-
-        # Compute book_uuid based on MD5 checksum
-        import hashlib
-        hasher = hashlib.md5()
-        with open(pdf_path, 'rb') as afile:
-            buf = afile.read(65536)
-            while len(buf) > 0:
-                hasher.update(buf)
-                buf = afile.read(65536)
-        book_uuid = hasher.hexdigest()
-        
-        # Get PDF offset from cache to calculate PDF pages
-        try:
-            with open("chapterdata/chapters_cache.json", "r") as f:
-                book_cache = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            book_cache = {}
-            
-        book_key = f"{class_name}_{subject.lower()}"
-        pdf_offset = book_cache.get(book_key, {}).get("pdf_offset", 0)
-        
-        logger.info(f"📖 Book key: {book_key}, PDF offset: {pdf_offset}")
-        
-        # Calculate PDF pages from chapter pages if needed
-        for chapter in chapters:
-            if 'chpstpage' in chapter and 'chpendpage' in chapter:
-                chapter['pdf_startpg'] = chapter['chpstpage'] + pdf_offset
-                chapter['pdf_endpg'] = chapter['chpendpage'] + pdf_offset
-                logger.info(f"Calculated PDF pages for {chapter.get('chapter_name')}: "
-                           f"chp {chapter['chpstpage']}-{chapter['chpendpage']} -> "
-                           f"pdf {chapter['pdf_startpg']}-{chapter['pdf_endpg']}")
-        
-        # Start the background processing task
-        logger.info(f"Starting background processing for book {book_uuid}")
-        background_tasks.add_task(process_book_in_background, book_uuid, pdf_path, class_name, subject, chapters)
-        
-        return {"message": "Book processing started in the background.", "status": "processing", "book_id": book_uuid}
-    except Exception as e:
-        logger.error(f"Error processing book creation request: {e}", exc_info=True)
-        raise HTTPException(status_code=422, detail=f"Error processing book creation request: {e}")
 
 
 @router.get("/api/books")
@@ -868,17 +615,24 @@ async def pre_analyze_books(request: PreAnalyzeRequest):
                     "chpendpage": None
                 }
 
+            # Deliberately does NOT ask the LLM to name the chapter here - a
+            # 2-page/3000-char sample is not enough context to reliably read
+            # the real chapter title (confirmed live: it regularly picked up
+            # a subheading or the book's series title instead). Naming is
+            # left entirely to new_rag's own Stage 2 detection during
+            # ingest_book(), which reads the full chapter text. This call's
+            # only job is is_academic/chapter_no/page-range classification
+            # for the pre-upload confirmation table.
             prompt = f"""
             Analyze the following text sample extracted from the first two pages of a Class {request.class_name} {request.subject} textbook document.
             Determine if this is an academic chapter or administrative front/back matter (TOC, preface, constitution, anthem, index).
-            
+
             Format response as a JSON object with these keys:
             - is_academic: boolean
-            - chapter_name: string or null (the chapter title, capitalized nicely)
             - chapter_no: integer or null (the chapter number)
             - chpstpage: integer or null (the starting printed page number of the chapter in the book)
             - chpendpage: integer or null (the ending printed page number of the chapter, estimated as start page + {pdf_page_count} - 1)
-            
+
             Document Text:
             {sample_text[:3000]}
             """
@@ -907,14 +661,14 @@ async def pre_analyze_books(request: PreAnalyzeRequest):
             
             # Heuristic checks
             is_academic = parsed.get("is_academic", True)
-            chapter_name = parsed.get("chapter_name")
             chapter_no = parsed.get("chapter_no")
             chpstpage = parsed.get("chpstpage")
             chpendpage = parsed.get("chpendpage")
 
-            # Fallbacks if LLM fails to extract page numbers or names
-            if is_academic and not chapter_name:
-                chapter_name = filename.replace(".pdf", "").replace("_", " ").capitalize()
+            # Placeholder label only, for the pre-upload confirmation table -
+            # the real name comes from new_rag's own detection during
+            # ingestion (see ingest_book() call above/below), never from here.
+            chapter_name = filename.replace(".pdf", "").replace("_", " ").capitalize() if is_academic else None
             # Prefer the deterministic footer-derived page number over the
             # LLM's guess - see detection above. Only fall back to the LLM's
             # value, then finally to "starts at page 1", if detection failed.
@@ -1003,3 +757,64 @@ async def batch_ingest_books(
     except Exception as e:
         logger.error(f"Error starting batch ingestion: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/books/all")
+async def list_all_books():
+    """
+    Lists every (class, subject) with real ingested content, reading
+    Firestore directly - the durable source of truth process_batch_ingest_in_background
+    actually writes to (classes/{class}/subjects/{subject}), not the
+    /api/books legacy local-cache endpoint (local_chap_service), which isn't
+    guaranteed to reflect what's really been ingested. Built for a
+    no-login/browse-all flow (e.g. a terminal tool with no student email to
+    resolve a class from) - deliberately a real collection-group query, not
+    a workaround, since there was no existing way to answer "what books
+    exist across every class" at all before this.
+    """
+    try:
+        # collection_group, not collection("classes").stream() - save_summary_document()
+        # never .set()s the parent classes/{class} document itself, only the
+        # nested subjects/{subject} doc, which makes classes/{class} an
+        # "implicit" document (exists only via reference, no field data of
+        # its own). Firestore's own docs confirm a plain collection listing
+        # skips implicit documents entirely - confirmed live, this returned
+        # an empty list against real, present data before switching to
+        # collection_group, which queries every "subjects" subcollection
+        # across the whole database regardless of parent-document state.
+        books = []
+        for subject_doc in db.collection_group("subjects").stream():
+            data = subject_doc.to_dict() or {}
+            chapters = data.get("chapters", [])
+            if not chapters:
+                continue
+            class_name = subject_doc.reference.parent.parent.id
+            books.append({
+                "class_name": class_name,
+                "subject": subject_doc.id,
+                "book_uuid": data.get("book_uuid"),
+                "chapter_count": len(chapters),
+            })
+        return {"books": books}
+    except Exception as e:
+        logger.error(f"Failed to list all books: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/books/status")
+async def get_batch_ingest_status(class_name: str, subject: str, book_id: str):
+    """
+    Polls the progress of a batch-ingest job started via POST /api/books/batch-ingest
+    (book_id is the `book_id` that endpoint returned). Reads the Firestore job-progress
+    record written by process_batch_ingest_in_background - a real, durable status source,
+    not a workaround, so any caller (terminal script, future UI polling, another service)
+    can check "is this actually done yet" without depending on local disk or importing
+    pipeline internals. Survives a server restart mid-job, unlike an in-memory job map would.
+
+    status: "processing" | "completed" | "failed" | "not_found" (no job with this book_id
+    exists yet, or was for a different subject/class - not the same as "processing").
+    """
+    job_doc = _ingestion_job_ref(class_name, subject, book_id).get()
+    if not job_doc.exists:
+        return {"status": "not_found", "book_id": book_id}
+    return job_doc.to_dict()

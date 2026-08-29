@@ -1,0 +1,8 @@
+{
+  "jesc101": {
+    "chapter_name": "1 Chemical Reactions and Equations",
+    "status": "ingested",
+    "message": "Ingested 52 chunks (15 topics, 14 diagrams, 2 table candidates) into Qdrant collection 'textbooks_v3'.",
+    "folder": "jesc101"
+  }
+}

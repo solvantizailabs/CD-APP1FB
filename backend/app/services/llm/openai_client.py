@@ -32,10 +32,25 @@ class TextResponse:
         self.candidates = [Candidate()] if self.text else []
 
 
-def _messages(contents: Any) -> list[dict[str, str]]:
+def _messages(contents: Any) -> list[dict[str, Any]]:
     if isinstance(contents, str):
         return [{"role": "user", "content": contents}]
     if isinstance(contents, list):
+        # Multimodal path (docs/IMAGE_PIPELINE_PLAN.md Stage 3): a dict item
+        # anywhere in the list (e.g. {"type": "image_url", "image_url": {...}})
+        # means the caller built a real OpenAI content-block array, not plain
+        # text to join. Any plain string items get wrapped into a text block
+        # so they can sit in the same array, and the whole thing becomes ONE
+        # user message's content - the actual multimodal message shape,
+        # unlike every other branch here which only ever sends plain text.
+        # Every existing caller only ever passes strings, so this branch
+        # never triggers for them - added, not a replacement.
+        if any(isinstance(item, dict) for item in contents):
+            blocks = [
+                {"type": "text", "text": item} if isinstance(item, str) else item
+                for item in contents
+            ]
+            return [{"role": "user", "content": blocks}]
         if len(contents) == 2 and all(isinstance(item, str) for item in contents):
             return [
                 {"role": "system", "content": contents[0]},

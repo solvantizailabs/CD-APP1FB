@@ -189,228 +189,80 @@ def track_cumulative_analytics(uid: str, query: str, subject: str, chapter_name:
         logger.error(f"[CUMULATIVE ANALYTICS] Failed to track analytics for {uid}: {e}", exc_info=True)
 
 
-@router.get("/api/query", tags=["LLM"])
-async def query_engine(
-    book_uuid: str = Query(...),
+@router.get("/api/retrieve", tags=["LLM"])
+async def retrieve_only(
     query: str = Query(...),
     class_name: str = Query(...),
-    subject: str = Query(...)
+    subject: str = Query(...),
+    chapter_id: Optional[str] = Query(None),
 ):
     """
-    Streams the answer in real-time using Server-Sent Events (SSE).
+    Retrieval-only endpoint - runs the exact same production retrieval call
+    /api/smart_query uses internally (new_rag_adapter.hybrid_search_v2, the
+    real seam where new_rag's hybrid_retriever.retrieve() gets invoked -
+    fusion, dedup, cross-encoder rerank, confidence tiering, parent
+    escalation, and the Stage 2 image-vector widening, all of it), but
+    WITHOUT the orchestrator LLM call, generation, grounding, TTS params, or
+    Redis session machinery /api/smart_query also does. Built for retrieval
+    testing/inspection - "what did the retriever actually find for this
+    query" - not a lighter version of the real answer flow, a genuinely
+    different, narrower endpoint.
+
+    book_uuid is derived the same deterministic way books.py's own
+    ingestion already computes it (uuid5(NAMESPACE_DNS,
+    f"{class_name}_{subject}".lower())), so a caller only needs to know
+    class+subject, not a book_uuid it would otherwise have no way to obtain.
     """
-    async def event_generator():
-        from backend.app.utils.llm_tracker import request_stats
-        request_stats.set({"calls": [], "start_time": time.time(), "query": query})
-        start = time.time()
-        print(f"\n{'='*80}")
-        print(f"[QUERY] New query received at {datetime.datetime.now().strftime('%H:%M:%S')}")
-        print(f"[QUERY] User question: {query}")
-        print(f"[QUERY] Book: Class {class_name} - {subject.capitalize()}")
-        print(f"[QUERY] Book UUID: {book_uuid[:16]}...")
-        print(f"{'='*80}\n")
-        
-        print(f"[FIRESTORE] Loading summaries from cache/Firestore...")
-        summary_doc = firestore_service.load_summary_from_firestore(class_name, subject)
-        if not summary_doc:
-            yield f"data: {json.dumps({'error': 'No content found for this class/subject.'})}\n\n"
-            return
-        chapters = summary_doc["chapters"]
-        print(f"[FIRESTORE] Loaded {len(chapters)} chapters\n")
+    import uuid as uuid_lib
+    from backend.app.services.retrieval import new_rag_adapter
 
-        if book_uuid == "global" or not book_uuid:
-            resolved_uuid = summary_doc.get("book_uuid")
-            if resolved_uuid:
-                book_uuid = resolved_uuid
-                print(f"[QUERY] Mapped global book_uuid to resolved database UUID: {book_uuid}")
-        
-        try:
-            reform = reformulate_with_llm(
-                raw_query=query,
-                class_name=class_name,
-                subject=subject,
-                chapters=chapters
-            )
-            
-            reformulated_query = reform.get("reformulated_query", query)
-            classification = reform.get("classification", "general")
-            chapter_ranking = reform.get("chapter_ranking", [])
-            
-            print("\n" + "="*40)
-            print("RAW USER QUESTION:")
-            print(f"   \"{query}\"")
-            print("="*40 + "\n")
-            
-            print("="*40)
-            print("REFORMULATED QUERY:")
-            print(f"   \"{reformulated_query}\"")
-            print(f"CLASSIFICATION          : {classification}")
-            print(f"TOP CHAPTERS IDENTIFIED : {len(chapter_ranking)}")
-            print("="*40 + "\n")
-            
-        except Exception as e:
-            print(f"[REFORMULATE] Error: {e}")
-            reformulated_query = query
-            classification = "general"
-            chapter_ranking = chapters[:5]
-        
-        print(f"[SIMILARITY] Calculating semantic similarity scores for chapters...")
-        try:
-            from sentence_transformers import util
-            query_embedding = qdrant.local_embedder.encode(reformulated_query, convert_to_tensor=True)
-            
-            scored_chapters = []
-            for chapter in chapters:
-                summary = chapter.get("summary", "")
-                if summary:
-                    summary_embedding = qdrant.local_embedder.encode(summary, convert_to_tensor=True)
-                    similarity = util.cos_sim(query_embedding, summary_embedding)[0][0].item()
-                    
-                    chapter_with_score = chapter.copy()
-                    chapter_with_score['relevance_score'] = round(similarity, 3)
-                    scored_chapters.append(chapter_with_score)
-                else:
-                    chapter_copy = chapter.copy()
-                    chapter_copy['relevance_score'] = 0.0
-                    scored_chapters.append(chapter_copy)
-            
-            scored_chapters.sort(key=lambda x: x['relevance_score'], reverse=True)
-            chapter_ranking = scored_chapters[:5]
-            
-            print(f"[SIMILARITY] Calculated similarity scores for {len(scored_chapters)} chapters")
-        except Exception as e:
-            print(f"[SIMILARITY] Error calculating similarity: {e}")
-            if chapter_ranking:
-                for ch in chapter_ranking:
-                    if 'score' in ch and 'relevance_score' not in ch:
-                        ch['relevance_score'] = ch['score']
-                    elif 'relevance_score' not in ch:
-                        ch['relevance_score'] = 0.0
-        
-        print(f"[RETRIEVAL] Performing hybrid search...")
-        metadata = qdrant.get_book_metadata(book_uuid)
-        
-        processed_data = qdrant.reformulate_and_classify_query(
-            query=reformulated_query,
-            class_name=metadata.get("class_name"),
-            subject=metadata.get("subject"),
-            chapter_list=[ch["chapter_name"] for ch in chapter_ranking]
+    book_uuid = str(uuid_lib.uuid5(uuid_lib.NAMESPACE_DNS, f"{class_name}_{subject}".lower()))
+    try:
+        result = new_rag_adapter.hybrid_search_v2(
+            query=query, book_uuid=book_uuid, class_name=class_name, subject=subject, chapter_id=chapter_id,
         )
-        
-        keywords = processed_data.get("keywords", [])
-        conceptual_score = processed_data.get("conceptual_score", 0.5)
-        
-        top_chapter_names = [ch["chapter_name"] for ch in chapter_ranking[:5]]
-        
-        cleaned_keywords = []
-        for kw in keywords:
-            if isinstance(kw, dict):
-                cleaned_keywords.append({"keyword": kw.get("keyword", ""), "importance": kw.get("importance", 0.5)})
-            else:
-                cleaned_keywords.append({"keyword": str(kw), "importance": 0.5})
+    except Exception as e:
+        logger.error(f"[RETRIEVE] Retrieval failed for query={query!r}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
-        hybrid_results, semantic_results, bm25_results = qdrant.hybrid_search(
-            book_uuid=book_uuid,
-            query=reformulated_query,
-            keywords=cleaned_keywords,
-            conceptual_score=conceptual_score,
-            metadata_filters={"chapter_names": top_chapter_names}
-        )
-        
-        context = "\n\n---\n\n".join([doc["text"] for score, doc in hybrid_results[:10]])
-        
-        ans_txt_data = {
-            "query": query,
-            "reformulated_query": reformulated_query,
-            "classification": classification,
-            "conceptual_score": conceptual_score,
-            "chapter_ranking": chapter_ranking,
-            "semantic_results": semantic_results,
-            "bm25_results": bm25_results,
-            "hybrid_results": hybrid_results,
-            "start_time": start
-        }
-        
-        print(f"[LLM] Streaming answer...")
-        final_prompt = prompt_styler.get_answer_prompt(
-            class_name=class_name,
-            subject=subject,
-            query=reformulated_query,
-            context=context
-        )
-        
-        full_answer = ""
-        try:
-            response_stream = qdrant.openai_client.models.generate_content_stream(
-                model=qdrant.generation_model_name,
-                contents=final_prompt
-            )
-            
-            for chunk in response_stream:
-                try:
-                    if chunk.text:
-                        full_answer += chunk.text
-                        event_data = json.dumps({
-                            "display_text": chunk.text,
-                            "read_text": chunk.text 
-                        })
-                        yield f"data: {event_data}\n\n"
-                        await asyncio.sleep(0.01)
-                except ValueError:
-                    pass
-            
-            print(f"[LLM] Answer streamed ({len(full_answer)} characters)\n")
-        except Exception as e:
-            print(f"[LLM] Error generating answer: {e}\n")
-            error_msg = "Sorry, I couldn't generate the answer."
-            full_answer = error_msg
-            event_data = json.dumps({"display_text": error_msg, "read_text": error_msg})
-            yield f"data: {event_data}\n\n"
-        
-        yield "data: [DONE]\n\n"
-        
-        # Write to ans.txt
-        try:
-            with open("ans.txt", "w", encoding="utf-8") as f:
-                f.write(f"{'='*80}\n")
-                f.write(f"QUERY LOG - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                f.write(f"{'='*80}\n\n")
-                f.write(f"1. ORIGINAL QUERY:\n   {ans_txt_data['query']}\n\n")
-                f.write(f"2. REFORMULATED QUERY:\n   {ans_txt_data['reformulated_query']}\n")
-                f.write(f"   Classification: {ans_txt_data['classification']}\n")
-                f.write(f"   Conceptual Score: {ans_txt_data['conceptual_score']:.2f}\n\n")
-                f.write(f"3. CHAPTER RANKING:\n")
-                for idx, ch in enumerate(ans_txt_data['chapter_ranking'], 1):
-                    f.write(f"   {idx}. {ch['chapter_name']} (relevance: {ch.get('relevance_score', 'N/A')})\n")
-                f.write(f"\n4. GENERATED ANSWER:\n{full_answer}\n\n")
-        except Exception as e:
-            print(f"[LOG] âœ— Error writing to ans.txt: {e}\n")
-            
-        try:
-            rag_chunks = []
-            if "hybrid_results" in ans_txt_data and ans_txt_data["hybrid_results"]:
-                for score, doc in ans_txt_data["hybrid_results"][:5]:
-                    rag_chunks.append({
-                        "chunk_id": doc.get("chunk_id", "chunk_unknown"),
-                        "text": doc.get("text", "")[:200],
-                        "score": round(score, 3)
-                    })
-            save_chat_log_background(
-                user_query=query,
-                subject=subject,
-                mode="text_to_text",
-                session_id=None,
-                retrieved_rag_chunks=rag_chunks,
-                llm_response=full_answer,
-                execution_time_ms=int((time.time() - start) * 1000)
-            )
-        except Exception as log_err:
-            logger.error(f"[DeploymentLogger] Failed to log query_engine: {log_err}")
+    chunks = [
+        {"score": score, **payload}
+        for score, payload in result.get("score_payload_pairs", [])
+    ]
 
-        from backend.app.utils.llm_tracker import print_query_performance_report
-        print_query_performance_report()
-            
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    # raw_result carries hybrid_retriever.retrieve()'s full, un-stripped
+    # return dict (see new_rag_adapter.hybrid_search_v2's own docstring) -
+    # score_payload_pairs above deliberately keeps only (score, payload) for
+    # backward compatibility with existing callers (test_runner.py), so the
+    # richer debugging fields (which candidates were child-level vs
+    # escalated-to-parent, and the full per-parent vote breakdown behind an
+    # escalation decision - added 2026-08-25 per user request, so
+    # terminal_test/retrieval.py can show child vs. parent chunks and why a
+    # given parent did/didn't win escalation, not just the final answer) are
+    # read from there instead of being dropped.
+    raw_result = result.get("raw_result", {})
+    child_candidates = [
+        {"score": c.get("rerank_score"), "level": c.get("level", "child"), **c.get("payload", {})}
+        for c in raw_result.get("child_candidates", [])
+    ]
+    final_chunks_with_level = [
+        {"score": score, "level": c.get("level"), "note": c.get("note"), **payload}
+        for c, (score, payload) in zip(raw_result.get("chunks", []), result.get("score_payload_pairs", []))
+    ]
+
+    return {
+        "book_uuid": book_uuid,
+        "status": result.get("status"),
+        "confidence_tier": result.get("confidence_tier"),
+        "top_score": result.get("top_score"),
+        "retried": result.get("retried"),
+        "escalated_to_parent": result.get("escalated_to_parent"),
+        "escalation_threshold_count": raw_result.get("escalation_threshold_count"),
+        "parent_vote_breakdown": raw_result.get("parent_vote_breakdown", []),
+        "child_candidates": child_candidates,
+        "chunk_count": len(chunks),
+        "chunks": final_chunks_with_level if final_chunks_with_level else chunks,
+    }
 
 
 @router.get("/api/smart_query", tags=["LLM"])
@@ -698,8 +550,13 @@ async def smart_query_engine(
                         reformulated_query=out.get("reformulated_query", query),
                         mode="text",
                         llm_action=classification,
+                        format_decision=format_decision,
                         answer_length=len(text_script),
-                        query_json_url=None,
+                        # §9.2.D: reuse the ORIGINATING turn's debug JSON rather than
+                        # leaving this cache-hit turn's debug trail empty - populated
+                        # only for cache entries written after this field existed;
+                        # older entries fall back to None, same as before.
+                        query_json_url=cached.get("query_json_url"),
                         llm_response=text_script,
                         retrieved_sources=None,  # Cache hits don't execute a fresh search
                         storyboard_data={"scenes": cached_video_scenes} if cached_video_scenes else None,
@@ -964,6 +821,28 @@ async def smart_query_engine(
             query_id = f"q_{uuid.uuid4().hex[:8]}"
             
             # Construct unified transaction package
+            # Per-query debug record (docs/RAG_INTEGRATION_PLAN.md §9): this
+            # JSON, uploaded to Supabase below and linked back onto the
+            # Firestore query doc as query_json_url, is the single place to
+            # see everything about one answer - question, classification,
+            # every retrieved chunk's real text/score/confidence, what was
+            # actually sent to the model for grounding, and the final answer
+            # (before/after grounding, if it fired). Every field here is a
+            # direct pass-through of a value run_orchestrator_pipeline()
+            # already computed (see test_runner.py's report dict) - nothing
+            # is inferred or generated for the purpose of this record itself.
+            _retrieved_chunks_full = [
+                {
+                    "chunk_id": c.get("chunk_id"),
+                    "chunk_type": c.get("chunk_type"),
+                    "topic_name": c.get("topic_name"),
+                    "chapter_name": c.get("chapter_name"),
+                    "textbook_page": c.get("page_number"),
+                    "score": c.get("score"),
+                    "text": c.get("full_text", c.get("content_snippet", "")),
+                }
+                for c in report.get("retrieved_top10_chunks", [])
+            ]
             transaction_payload = {
                 "query_id": query_id,
                 "session_id": session["session_id"],
@@ -980,7 +859,34 @@ async def smart_query_engine(
                 "media_urls": {
                     "interactive_url": interactive_url,
                     "storyboard_json_url": (updated_lesson_package or {}).get("storyboard_json_url") if updated_lesson_package else None
-                }
+                },
+                "retrieval": {
+                    "status": report.get("retrieval_status"),
+                    "confidence_tier": report.get("retrieval_confidence_tier"),
+                    "top_score": report.get("retrieval_top_score"),
+                    "retried": report.get("retrieval_retried", False),
+                    "escalated_to_parent": report.get("retrieval_escalated_to_parent", False),
+                    "resolved_book_uuid": report.get("resolved_book_uuid"),
+                    "matched_subject": out.get("matched_subject"),
+                    "matched_chapter": out.get("matched_chapter"),
+                },
+                "retrieved_chunks": _retrieved_chunks_full,
+                # The exact textbook context the grounding pass (test_runner.py
+                # ::ground_text_narration) was shown, when it ran - null if
+                # grounding didn't fire for this turn (GENERAL_KNOWLEDGE, no
+                # chunks, or confidence below HIGH/MEDIUM). Reconstructed here
+                # from the same top-6 chunks the grounding pass itself used,
+                # rather than plumbing the exact prompt string through the
+                # report, so this stays a faithful mirror of what was shown.
+                "context_sent_to_llm": (
+                    "\n\n---\n\n".join(c["text"] for c in _retrieved_chunks_full[:6] if c["text"])
+                    if report.get("grounding_applied") else None
+                ),
+                "grounding": {
+                    "applied": report.get("grounding_applied", False),
+                    "narration_before": report.get("narration_before_grounding"),
+                    "narration_after": text_script if report.get("grounding_applied") else None,
+                },
             }
             
             # Create local user history directory
@@ -1018,14 +924,18 @@ async def smart_query_engine(
                     except Exception:
                         pass
 
-            # Register compiled query results to the global cache
+            # Register compiled query results to the global cache. Carries
+            # query_json_url forward (§9.2.D) so a future CACHE HIT on this
+            # entry still resolves to this turn's full debug record instead
+            # of an empty one.
             save_to_global_query_cache(
                 raw_query=query,
                 class_name=student_profile["class"],
                 subject=subject,
                 orchestrator_output=out,
                 interactive_url=interactive_url,
-                video_scenes=video_scenes_for_cache
+                video_scenes=video_scenes_for_cache,
+                query_json_url=query_json_url
             )
 
             # Save query turn to standard chat session manager
@@ -1124,6 +1034,7 @@ async def smart_query_engine(
                     reformulated_query=out.get("reformulated_query", query),
                     mode="text",
                     llm_action=classification,
+                    format_decision=format_decision,
                     answer_length=len(text_script),
                     query_json_url=query_json_url,
                     llm_response=text_script,

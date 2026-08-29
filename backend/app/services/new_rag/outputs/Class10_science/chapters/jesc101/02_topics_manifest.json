@@ -1,0 +1,158 @@
+{
+  "topics": [
+    {
+      "topic_name": "Introduction",
+      "topic_type": "topic",
+      "start_page": 1,
+      "start_anchor": null,
+      "end_page": 2,
+      "end_anchor": "From the above three activities, we can say that any of the following observations helps us to determine whether a chemical reaction has taken place –",
+      "section": null,
+      "learning_objective": null
+    },
+    {
+      "topic_name": "Observations of Chemical Reactions",
+      "topic_type": "topic",
+      "start_page": 2,
+      "start_anchor": "From the above three activities, we can say that any of the following observations helps us to determine whether a chemical reaction has taken place –",
+      "section": "1.1 CHEMICAL EQUATIONS",
+      "learning_objective": "Identify the observations that indicate a chemical reaction has occurred.",
+      "end_page": 3,
+      "end_anchor": "1.1.1 Writing a Chemical Equation"
+    },
+    {
+      "topic_name": "Writing a Chemical Equation",
+      "topic_type": "topic",
+      "start_page": 3,
+      "start_anchor": "1.1.1 Writing a Chemical Equation",
+      "section": "1.1 CHEMICAL EQUATIONS",
+      "learning_objective": "Learn how to write chemical equations using chemical symbols.",
+      "end_page": 3,
+      "end_anchor": "1.1.2 Balanced Chemical Equations"
+    },
+    {
+      "topic_name": "Balanced Chemical Equations",
+      "topic_type": "topic",
+      "start_page": 3,
+      "start_anchor": "1.1.2 Balanced Chemical Equations",
+      "section": "1.1 CHEMICAL EQUATIONS",
+      "learning_objective": "Understand the importance of balancing chemical equations.",
+      "end_page": 6,
+      "end_anchor": "1.2 TYPES OF CHEMICAL REACTIONS"
+    },
+    {
+      "topic_name": "Types of Chemical Reactions",
+      "topic_type": "topic",
+      "start_page": 6,
+      "start_anchor": "1.2 TYPES OF CHEMICAL REACTIONS",
+      "section": null,
+      "learning_objective": "Identify and describe different types of chemical reactions.",
+      "end_page": 6,
+      "end_anchor": "1.2.1 Combination Reaction"
+    },
+    {
+      "topic_name": "Combination Reaction",
+      "topic_type": "topic",
+      "start_page": 6,
+      "start_anchor": "1.2.1 Combination Reaction",
+      "section": "1.2 TYPES OF CHEMICAL REACTIONS",
+      "learning_objective": "Understand the concept of combination reactions and their characteristics.",
+      "end_page": 8,
+      "end_anchor": "1.2.2 Decomposition Reaction"
+    },
+    {
+      "topic_name": "Decomposition Reaction",
+      "topic_type": "topic",
+      "start_page": 8,
+      "start_anchor": "1.2.2 Decomposition Reaction",
+      "section": "1.2 TYPES OF CHEMICAL REACTIONS",
+      "learning_objective": "Learn about decomposition reactions and their examples.",
+      "end_page": 10,
+      "end_anchor": "1.2.3 Displacement Reaction"
+    },
+    {
+      "topic_name": "Displacement Reaction",
+      "topic_type": "topic",
+      "start_page": 10,
+      "start_anchor": "1.2.3 Displacement Reaction",
+      "section": "1.2 TYPES OF CHEMICAL REACTIONS",
+      "learning_objective": "Understand the process and examples of displacement reactions.",
+      "end_page": 11,
+      "end_anchor": "1.2.4 Double Displacement Reaction"
+    },
+    {
+      "topic_name": "Double Displacement Reaction",
+      "topic_type": "topic",
+      "start_page": 11,
+      "start_anchor": "1.2.4 Double Displacement Reaction",
+      "section": "1.2 TYPES OF CHEMICAL REACTIONS",
+      "learning_objective": "Identify double displacement reactions and their characteristics.",
+      "end_page": 12,
+      "end_anchor": "1.2.5 Oxidation and Reduction"
+    },
+    {
+      "topic_name": "Oxidation and Reduction",
+      "topic_type": "topic",
+      "start_page": 12,
+      "start_anchor": "1.2.5 Oxidation and Reduction",
+      "section": "1.2 TYPES OF CHEMICAL REACTIONS",
+      "learning_objective": "Understand the concepts of oxidation and reduction in chemical reactions.",
+      "end_page": 13,
+      "end_anchor": "1.3.1 Corrosion"
+    },
+    {
+      "topic_name": "Corrosion",
+      "topic_type": "topic",
+      "start_page": 13,
+      "start_anchor": "1.3.1 Corrosion",
+      "section": null,
+      "learning_objective": "Recognize the process of corrosion and its effects on metals.",
+      "end_page": 13,
+      "end_anchor": "1.3.2 Rancidity"
+    },
+    {
+      "topic_name": "Rancidity",
+      "topic_type": "topic",
+      "start_page": 13,
+      "start_anchor": "1.3.2 Rancidity",
+      "section": null,
+      "learning_objective": "Understand the concept of rancidity and its impact on food.",
+      "end_page": 14,
+      "end_anchor": "What you have learnt"
+    },
+    {
+      "topic_name": "Summary of Chemical Reactions",
+      "topic_type": "summary",
+      "start_page": 14,
+      "start_anchor": "What you have learnt",
+      "section": null,
+      "learning_objective": "Summarize key concepts related to chemical reactions and equations.",
+      "end_page": 14,
+      "end_anchor": "EXERCISES"
+    },
+    {
+      "topic_name": "Exercises",
+      "topic_type": "exercise",
+      "start_page": 14,
+      "start_anchor": "EXERCISES",
+      "section": null,
+      "learning_objective": "Apply knowledge of chemical reactions through various exercises.",
+      "end_page": 16,
+      "end_anchor": "Group Activity"
+    },
+    {
+      "topic_name": "Group Activity",
+      "topic_type": "activity",
+      "start_page": 16,
+      "start_anchor": "Group Activity",
+      "section": null,
+      "learning_objective": "Engage in a group activity to explore exothermic and endothermic reactions.",
+      "end_page": 16,
+      "end_anchor": null
+    }
+  ],
+  "is_valid": true,
+  "issues": [
+    "topic 'Introduction to Chemical Reactions': anchor '1 Chemical Reactions and Equations' not found verbatim on textbook_page=1 or its immediate neighbors"
+  ]
+}

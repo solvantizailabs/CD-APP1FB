@@ -1,0 +1,338 @@
+{
+  "blueprint": {
+    "lesson_title": "Decomposition of Ferrous Sulphate Crystals",
+    "theme": "Science",
+    "scenes": [
+      {
+        "scene_no": 1,
+        "purpose": "Introduce the topic of decomposition reactions, specifically focusing on ferrous sulphate.",
+        "beat_shape": "opener",
+        "template_id": "title_slide",
+        "template_selection_reasoning": "The title slide is essential for introducing the lesson topic and setting the stage for the following content.",
+        "camera": {
+          "zoom": 1.1,
+          "pan_x": 0,
+          "pan_y": 0,
+          "target_node": "main_concept"
+        },
+        "teacher_script": "Today, we will explore the decomposition of ferrous sulphate crystals when heated. This process reveals important chemical changes and reactions.",
+        "template_data": {
+          "title": "Decomposition of Ferrous Sulphate Crystals",
+          "subtitle": "Understanding Chemical Reactions"
+        },
+        "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_07c9d4a3/scene_1.wav"
+      },
+      {
+        "scene_no": 2,
+        "purpose": "Explain the initial state of ferrous sulphate crystals and the process of heating them.",
+        "beat_shape": "process_spatial",
+        "template_id": "illustrated_scene",
+        "template_selection_reasoning": "An illustrated scene effectively visualizes the process of heating ferrous sulphate crystals, making it easier for students to grasp the concept.",
+        "camera": {
+          "zoom": 1.1,
+          "pan_x": 0,
+          "pan_y": 0,
+          "target_node": "main_concept"
+        },
+        "teacher_script": "Ferrous sulphate crystals, which are typically green, undergo a significant transformation when heated. As we apply heat, we will observe changes in color and the release of gases.",
+        "template_data": {
+          "title": "Heating Ferrous Sulphate Crystals",
+          "animation_action": "rise",
+          "elements": [
+            {
+              "type": "path",
+              "path_data": "M 100 600 Q 300 100 600 600",
+              "stroke_color": "#3b82f6",
+              "stroke_width": 4,
+              "fill": "none"
+            },
+            {
+              "type": "circle",
+              "cx": 200,
+              "cy": 500,
+              "r": 60,
+              "stroke_color": "#ff0000",
+              "stroke_width": 2,
+              "fill": "rgba(255, 0, 0, 0.5)"
+            },
+            {
+              "type": "circle",
+              "cx": 400,
+              "cy": 500,
+              "r": 60,
+              "stroke_color": "#ff0000",
+              "stroke_width": 2,
+              "fill": "rgba(255, 0, 0, 0.5)"
+            },
+            {
+              "type": "line",
+              "x1": 200,
+              "y1": 500,
+              "x2": 400,
+              "y2": 500,
+              "stroke_color": "#ff0000",
+              "stroke_width": 2,
+              "dash_array": "5 5"
+            }
+          ]
+        },
+        "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_07c9d4a3/scene_2.wav"
+      },
+      {
+        "scene_no": 3,
+        "purpose": "Detail the chemical reaction that occurs during the heating of ferrous sulphate.",
+        "beat_shape": "hierarchy",
+        "template_id": "concept_diagram",
+        "template_selection_reasoning": "A concept diagram allows for a clear representation of the chemical reaction and its products, helping students visualize the breakdown of ferrous sulphate.",
+        "camera": {
+          "zoom": 1.1,
+          "pan_x": 0,
+          "pan_y": 0,
+          "target_node": "main_concept"
+        },
+        "teacher_script": "Upon heating, ferrous sulphate decomposes into ferric oxide, sulfur dioxide, and sulfur trioxide. This reaction illustrates the concept of thermal decomposition.",
+        "template_data": {
+          "title": "Decomposition Reaction of Ferrous Sulphate",
+          "central_node": {
+            "text": "Ferrous Sulphate (FeSO4)",
+            "icon": "molecule"
+          },
+          "leaf_nodes": [
+            {
+              "text": "Ferric Oxide (Fe2O3)",
+              "icon": "mineral"
+            },
+            {
+              "text": "Sulfur Dioxide (SO2)",
+              "icon": "gas_jar"
+            },
+            {
+              "text": "Sulfur Trioxide (SO3)",
+              "icon": "gas_jar"
+            }
+          ]
+        },
+        "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_07c9d4a3/scene_3.wav"
+      },
+      {
+        "scene_no": 4,
+        "purpose": "Summarize the key points and implications of the decomposition reaction.",
+        "beat_shape": "overlap",
+        "template_id": "venn_diagram",
+        "template_selection_reasoning": "A Venn diagram effectively summarizes the key products of the reaction and their characteristics, allowing for a comparative understanding.",
+        "camera": {
+          "zoom": 1.1,
+          "pan_x": 0,
+          "pan_y": 0,
+          "target_node": "main_concept"
+        },
+        "teacher_script": "In summary, the decomposition of ferrous sulphate not only changes its physical state but also produces important gases. Understanding these reactions is crucial in various industrial applications.",
+        "template_data": {
+          "left_title": "Products of Reaction",
+          "right_title": "Characteristics",
+          "left": [
+            {
+              "text": "Ferric Oxide",
+              "icon": "mineral"
+            },
+            {
+              "text": "Sulfur Dioxide",
+              "icon": "gas_jar"
+            },
+            {
+              "text": "Sulfur Trioxide",
+              "icon": "gas_jar"
+            }
+          ],
+          "right": [
+            {
+              "text": "Solid",
+              "icon": "solid"
+            },
+            {
+              "text": "Toxic Gas",
+              "icon": "gas_jar"
+            },
+            {
+              "text": "Toxic Gas",
+              "icon": "gas_jar"
+            }
+          ],
+          "intersection": [
+            {
+              "text": "Produced from Heating",
+              "icon": "heat"
+            }
+          ]
+        },
+        "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_07c9d4a3/scene_4.wav"
+      }
+    ]
+  },
+  "raw_clips": [
+    {
+      "scene_no": 1,
+      "purpose": "Introduce the topic of decomposition reactions, specifically focusing on ferrous sulphate.",
+      "beat_shape": "opener",
+      "template_id": "title_slide",
+      "template_selection_reasoning": "The title slide is essential for introducing the lesson topic and setting the stage for the following content.",
+      "camera": {
+        "zoom": 1.1,
+        "pan_x": 0,
+        "pan_y": 0,
+        "target_node": "main_concept"
+      },
+      "teacher_script": "Today, we will explore the decomposition of ferrous sulphate crystals when heated. This process reveals important chemical changes and reactions.",
+      "template_data": {
+        "title": "Decomposition of Ferrous Sulphate Crystals",
+        "subtitle": "Understanding Chemical Reactions"
+      },
+      "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_07c9d4a3/scene_1.wav"
+    },
+    {
+      "scene_no": 2,
+      "purpose": "Explain the initial state of ferrous sulphate crystals and the process of heating them.",
+      "beat_shape": "process_spatial",
+      "template_id": "illustrated_scene",
+      "template_selection_reasoning": "An illustrated scene effectively visualizes the process of heating ferrous sulphate crystals, making it easier for students to grasp the concept.",
+      "camera": {
+        "zoom": 1.1,
+        "pan_x": 0,
+        "pan_y": 0,
+        "target_node": "main_concept"
+      },
+      "teacher_script": "Ferrous sulphate crystals, which are typically green, undergo a significant transformation when heated. As we apply heat, we will observe changes in color and the release of gases.",
+      "template_data": {
+        "title": "Heating Ferrous Sulphate Crystals",
+        "animation_action": "rise",
+        "elements": [
+          {
+            "type": "path",
+            "path_data": "M 100 600 Q 300 100 600 600",
+            "stroke_color": "#3b82f6",
+            "stroke_width": 4,
+            "fill": "none"
+          },
+          {
+            "type": "circle",
+            "cx": 200,
+            "cy": 500,
+            "r": 60,
+            "stroke_color": "#ff0000",
+            "stroke_width": 2,
+            "fill": "rgba(255, 0, 0, 0.5)"
+          },
+          {
+            "type": "circle",
+            "cx": 400,
+            "cy": 500,
+            "r": 60,
+            "stroke_color": "#ff0000",
+            "stroke_width": 2,
+            "fill": "rgba(255, 0, 0, 0.5)"
+          },
+          {
+            "type": "line",
+            "x1": 200,
+            "y1": 500,
+            "x2": 400,
+            "y2": 500,
+            "stroke_color": "#ff0000",
+            "stroke_width": 2,
+            "dash_array": "5 5"
+          }
+        ]
+      },
+      "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_07c9d4a3/scene_2.wav"
+    },
+    {
+      "scene_no": 3,
+      "purpose": "Detail the chemical reaction that occurs during the heating of ferrous sulphate.",
+      "beat_shape": "hierarchy",
+      "template_id": "concept_diagram",
+      "template_selection_reasoning": "A concept diagram allows for a clear representation of the chemical reaction and its products, helping students visualize the breakdown of ferrous sulphate.",
+      "camera": {
+        "zoom": 1.1,
+        "pan_x": 0,
+        "pan_y": 0,
+        "target_node": "main_concept"
+      },
+      "teacher_script": "Upon heating, ferrous sulphate decomposes into ferric oxide, sulfur dioxide, and sulfur trioxide. This reaction illustrates the concept of thermal decomposition.",
+      "template_data": {
+        "title": "Decomposition Reaction of Ferrous Sulphate",
+        "central_node": {
+          "text": "Ferrous Sulphate (FeSO4)",
+          "icon": "molecule"
+        },
+        "leaf_nodes": [
+          {
+            "text": "Ferric Oxide (Fe2O3)",
+            "icon": "mineral"
+          },
+          {
+            "text": "Sulfur Dioxide (SO2)",
+            "icon": "gas_jar"
+          },
+          {
+            "text": "Sulfur Trioxide (SO3)",
+            "icon": "gas_jar"
+          }
+        ]
+      },
+      "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_07c9d4a3/scene_3.wav"
+    },
+    {
+      "scene_no": 4,
+      "purpose": "Summarize the key points and implications of the decomposition reaction.",
+      "beat_shape": "overlap",
+      "template_id": "venn_diagram",
+      "template_selection_reasoning": "A Venn diagram effectively summarizes the key products of the reaction and their characteristics, allowing for a comparative understanding.",
+      "camera": {
+        "zoom": 1.1,
+        "pan_x": 0,
+        "pan_y": 0,
+        "target_node": "main_concept"
+      },
+      "teacher_script": "In summary, the decomposition of ferrous sulphate not only changes its physical state but also produces important gases. Understanding these reactions is crucial in various industrial applications.",
+      "template_data": {
+        "left_title": "Products of Reaction",
+        "right_title": "Characteristics",
+        "left": [
+          {
+            "text": "Ferric Oxide",
+            "icon": "mineral"
+          },
+          {
+            "text": "Sulfur Dioxide",
+            "icon": "gas_jar"
+          },
+          {
+            "text": "Sulfur Trioxide",
+            "icon": "gas_jar"
+          }
+        ],
+        "right": [
+          {
+            "text": "Solid",
+            "icon": "solid"
+          },
+          {
+            "text": "Toxic Gas",
+            "icon": "gas_jar"
+          },
+          {
+            "text": "Toxic Gas",
+            "icon": "gas_jar"
+          }
+        ],
+        "intersection": [
+          {
+            "text": "Produced from Heating",
+            "icon": "heat"
+          }
+        ]
+      },
+      "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_07c9d4a3/scene_4.wav"
+    }
+  ]
+}

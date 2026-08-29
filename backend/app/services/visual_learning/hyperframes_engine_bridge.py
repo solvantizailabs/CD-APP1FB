@@ -322,7 +322,7 @@ async def compile_hyperframes_html_fast(lesson_id: str, lesson_dir: str):
         # Always serve index.html via FastAPI route to guarantee text/html MIME type rendering in browser iframes
         serving_url = f"/uploads/visual_lessons/{lesson_id}/index.html"
         logger.info(f"[RENDER LOG] [ENGINE SUCCESS] Compiled index.html ready -> {serving_url} (Cloud Backup: {cloud_html_url})")
-        return {"url": serving_url, "engine": "node", "degraded_reason": None}
+        return {"url": serving_url, "engine": "node", "degraded_reason": None, "cloud_url": cloud_html_url}
 
     else:
         # Node compile failed, timed out, or produced no output file - fall back to
@@ -341,9 +341,10 @@ async def compile_hyperframes_html_fast(lesson_id: str, lesson_dir: str):
 
         fallback_url = _compile_index_html_python_fallback(lesson_id, lesson_dir)
         dest_fallback = os.path.join(lesson_dir, "index.html")
+        cloud_html_url = None
         if os.path.exists(dest_fallback):
             from backend.app.core.supabase_storage import upload_file_to_supabase
-            upload_file_to_supabase(dest_fallback, f"{lesson_id}/index.html")
+            cloud_html_url = upload_file_to_supabase(dest_fallback, f"{lesson_id}/index.html")
         serving_url = f"/uploads/visual_lessons/{lesson_id}/index.html"
         logger.info(f"[RENDER LOG] [ENGINE SUCCESS] Python fallback HTML compiled -> {serving_url}")
-        return {"url": serving_url, "engine": "python_fallback", "degraded_reason": degraded_reason or "unknown"}
+        return {"url": serving_url, "engine": "python_fallback", "degraded_reason": degraded_reason or "unknown", "cloud_url": cloud_html_url}

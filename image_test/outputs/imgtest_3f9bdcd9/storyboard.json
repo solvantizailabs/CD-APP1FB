@@ -1,0 +1,215 @@
+[
+  {
+    "scene_no": 1,
+    "purpose": "Introduce the topic of soil erosion.",
+    "beat_shape": "opener",
+    "template_id": "title_slide",
+    "template_selection_reasoning": "The title slide is essential for setting the stage for the lesson, providing a clear introduction to the topic of soil erosion.",
+    "camera": {
+      "zoom": 1.1,
+      "pan_x": 0,
+      "pan_y": 0,
+      "target_node": "main_concept"
+    },
+    "teacher_script": "Today, we will explore the concept of soil erosion, its causes, and its impact on our environment. Understanding this process is crucial for effective soil conservation.",
+    "template_data": {
+      "title": "Understanding Soil Erosion",
+      "subtitle": "Causes, Effects, and Conservation"
+    },
+    "audio_url": ""
+  },
+  {
+    "scene_no": 2,
+    "purpose": "Explain what soil erosion is and its causes.",
+    "beat_shape": "hierarchy",
+    "template_id": "concept_diagram",
+    "template_selection_reasoning": "A concept diagram effectively illustrates the central idea of soil erosion and its various causes, allowing students to visualize the relationships between them.",
+    "camera": {
+      "zoom": 1.0,
+      "pan_x": 0,
+      "pan_y": 0,
+      "target_node": "main_concept"
+    },
+    "teacher_script": "Soil erosion is the process of the soil cover being worn away and washed down. It can be caused by natural forces like wind and water, as well as human activities such as deforestation and over-grazing.",
+    "template_data": {
+      "title": "Soil Erosion",
+      "central_node": {
+        "text": "Soil Erosion",
+        "icon": "earthquake"
+      },
+      "leaf_nodes": [
+        {
+          "text": "Natural Forces",
+          "icon": "wind"
+        },
+        {
+          "text": "Human Activities",
+          "icon": "factory"
+        },
+        {
+          "text": "Deforestation",
+          "icon": "forest"
+        },
+        {
+          "text": "Over-grazing",
+          "icon": "people"
+        }
+      ]
+    },
+    "audio_url": ""
+  },
+  {
+    "scene_no": 3,
+    "purpose": "Describe the types of soil erosion.",
+    "beat_shape": "hierarchy",
+    "template_id": "taxonomy_tree",
+    "template_selection_reasoning": "A taxonomy tree is suitable for categorizing the different types of soil erosion, helping students understand the hierarchy and relationships among them.",
+    "camera": {
+      "zoom": 1.0,
+      "pan_x": 0,
+      "pan_y": 0,
+      "target_node": "main_concept"
+    },
+    "teacher_script": "Soil erosion can be classified into several types, including gully erosion, sheet erosion, and wind erosion. Each type has distinct characteristics and impacts on the land.",
+    "template_data": {
+      "title": "Types of Soil Erosion",
+      "root": {
+        "label": "Soil Erosion Types",
+        "icon": "layers",
+        "children": [
+          {
+            "label": "Gully Erosion",
+            "icon": "canyon",
+            "children": []
+          },
+          {
+            "label": "Sheet Erosion",
+            "icon": "waterfall",
+            "children": []
+          },
+          {
+            "label": "Wind Erosion",
+            "icon": "wind",
+            "children": []
+          }
+        ]
+      }
+    },
+    "audio_url": ""
+  },
+  {
+    "scene_no": 4,
+    "purpose": "Discuss soil conservation methods.",
+    "beat_shape": "process_spatial",
+    "template_id": "illustrated_scene",
+    "template_selection_reasoning": "An illustrated scene is ideal for visually representing soil conservation methods, making it easier for students to grasp the practical applications of these techniques.",
+    "camera": {
+      "zoom": 1.0,
+      "pan_x": 0,
+      "pan_y": 0,
+      "target_node": "main_concept"
+    },
+    "teacher_script": "To combat soil erosion, various conservation methods can be employed. These include contour ploughing, terrace farming, and creating shelter belts with trees.",
+    "template_data": {
+      "title": "Soil Conservation Methods",
+      "animation_action": "rise",
+      "elements": [
+        {
+          "type": "path",
+          "path_data": "M 100 600 Q 300 400 500 600",
+          "stroke_color": "#8B4513",
+          "stroke_width": 4,
+          "fill": "none"
+        },
+        {
+          "type": "circle",
+          "cx": 200,
+          "cy": 500,
+          "r": 50,
+          "stroke_color": "#228B22",
+          "stroke_width": 2,
+          "fill": "rgba(34,139,34,0.5)"
+        },
+        {
+          "type": "circle",
+          "cx": 400,
+          "cy": 500,
+          "r": 50,
+          "stroke_color": "#228B22",
+          "stroke_width": 2,
+          "fill": "rgba(34,139,34,0.5)"
+        },
+        {
+          "type": "line",
+          "x1": 100,
+          "y1": 600,
+          "x2": 200,
+          "y2": 500,
+          "stroke_color": "#FFD700",
+          "stroke_width": 2,
+          "dash_array": "8 6"
+        },
+        {
+          "type": "line",
+          "x1": 300,
+          "y1": 600,
+          "x2": 400,
+          "y2": 500,
+          "stroke_color": "#FFD700",
+          "stroke_width": 2,
+          "dash_array": "8 6"
+        }
+      ]
+    },
+    "audio_url": ""
+  },
+  {
+    "scene_no": 5,
+    "purpose": "Summarize the lesson on soil erosion.",
+    "beat_shape": "overlap",
+    "template_id": "venn_diagram",
+    "template_selection_reasoning": "A Venn diagram is effective for summarizing the key concepts of soil erosion and conservation, highlighting their interconnections.",
+    "camera": {
+      "zoom": 1.0,
+      "pan_x": 0,
+      "pan_y": 0,
+      "target_node": "main_concept"
+    },
+    "teacher_script": "In summary, soil erosion is a critical environmental issue influenced by both natural and human factors. Effective conservation methods are essential to protect our soil resources.",
+    "template_data": {
+      "left_title": "Soil Erosion",
+      "right_title": "Soil Conservation",
+      "left": [
+        {
+          "text": "Causes: Natural & Human",
+          "icon": "earthquake"
+        },
+        {
+          "text": "Types: Gully, Sheet, Wind",
+          "icon": "layers"
+        }
+      ],
+      "right": [
+        {
+          "text": "Methods: Contour Ploughing",
+          "icon": "gear"
+        },
+        {
+          "text": "Methods: Terrace Farming",
+          "icon": "factory"
+        }
+      ],
+      "intersection": [
+        {
+          "text": "Impact on Agriculture",
+          "icon": "book"
+        },
+        {
+          "text": "Need for Sustainable Practices",
+          "icon": "check"
+        }
+      ]
+    },
+    "audio_url": ""
+  }
+]
