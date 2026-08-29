@@ -1,0 +1,154 @@
+{
+  "lesson_id": "imgtest_1fab4d9b",
+  "lesson_title": "Understanding Soil Erosion",
+  "layout_mode": "timeline",
+  "theme": "Science",
+  "global_assets": [],
+  "connections": [],
+  "scenes": [
+    {
+      "scene_no": 1,
+      "purpose": "Introduce the concept of soil erosion.",
+      "beat_shape": "opener",
+      "template_id": "title_slide",
+      "template_selection_reasoning": "The title slide is essential for introducing the lesson topic and setting the stage for the discussion on soil erosion.",
+      "camera": {
+        "zoom": 1.1,
+        "pan_x": 0,
+        "pan_y": 0,
+        "target_node": "main_concept"
+      },
+      "teacher_script": "Today, we will explore the critical issue of soil erosion, its causes, and its impact on our environment.",
+      "template_data": {
+        "title": "Understanding Soil Erosion",
+        "subtitle": "Exploring Causes and Consequences"
+      },
+      "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_1fab4d9b/scene_1.wav"
+    },
+    {
+      "scene_no": 2,
+      "purpose": "Explain what soil erosion is and its natural and human-induced causes.",
+      "beat_shape": "hierarchy",
+      "template_id": "concept_diagram",
+      "template_selection_reasoning": "A concept diagram effectively illustrates the central idea of soil erosion and its various causes, allowing for a clear visual representation of the information.",
+      "camera": {
+        "zoom": 1.1,
+        "pan_x": 0,
+        "pan_y": 0,
+        "target_node": "main_concept"
+      },
+      "teacher_script": "Soil erosion is the process of soil being worn away and washed down. It can occur naturally through wind and water or be accelerated by human activities like deforestation and construction.",
+      "template_data": {
+        "title": "Causes of Soil Erosion",
+        "central_node": {
+          "text": "Soil Erosion",
+          "icon": "earthquake"
+        },
+        "leaf_nodes": [
+          {
+            "text": "Natural Causes",
+            "icon": "wind"
+          },
+          {
+            "text": "Human Activities",
+            "icon": "factory"
+          }
+        ]
+      },
+      "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_1fab4d9b/scene_2.wav"
+    },
+    {
+      "scene_no": 3,
+      "purpose": "Illustrate the different types of soil erosion.",
+      "beat_shape": "hierarchy",
+      "template_id": "image_scene",
+      "template_selection_reasoning": "Using a real image to depict soil erosion provides a concrete visual reference that enhances understanding of the concept.",
+      "camera": {
+        "zoom": 1.1,
+        "pan_x": 0,
+        "pan_y": 0,
+        "target_node": "main_concept"
+      },
+      "teacher_script": "There are various types of soil erosion, including gully erosion, sheet erosion, and wind erosion. Each type has distinct characteristics and impacts.",
+      "template_data": {
+        "title": "Types of Soil Erosion",
+        "image_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/book-processing/Class10_social/chapters/jess101/05_diagrams/images/p10_4_Im2.jpg"
+      },
+      "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_1fab4d9b/scene_3.wav"
+    },
+    {
+      "scene_no": 4,
+      "purpose": "Discuss soil conservation methods.",
+      "beat_shape": "process_spatial",
+      "template_id": "illustrated_scene",
+      "template_selection_reasoning": "An illustrated scene can effectively depict various soil conservation methods, making it easier for students to visualize the techniques.",
+      "camera": {
+        "zoom": 1.1,
+        "pan_x": 0,
+        "pan_y": 0,
+        "target_node": "main_concept"
+      },
+      "teacher_script": "To combat soil erosion, several conservation methods can be employed, such as contour ploughing, terrace farming, and planting shelter belts.",
+      "template_data": {
+        "title": "Soil Conservation Methods",
+        "primitive_shape": "branching",
+        "primitive_params": {
+          "source": {
+            "label": "Soil Conservation"
+          },
+          "branches": [
+            {
+              "label": "Contour Ploughing",
+              "cluster": false
+            },
+            {
+              "label": "Terrace Farming",
+              "cluster": false
+            },
+            {
+              "label": "Shelter Belts",
+              "cluster": false
+            }
+          ]
+        }
+      },
+      "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_1fab4d9b/scene_4.wav"
+    },
+    {
+      "scene_no": 5,
+      "purpose": "Summarize the key points about soil erosion and conservation.",
+      "beat_shape": "cyclical",
+      "template_id": "cycle_template",
+      "template_selection_reasoning": "A cycle template is suitable for summarizing the ongoing relationship between soil erosion and conservation efforts, emphasizing the need for continuous action.",
+      "camera": {
+        "zoom": 1.1,
+        "pan_x": 0,
+        "pan_y": 0,
+        "target_node": "main_concept"
+      },
+      "teacher_script": "In summary, soil erosion is a significant environmental issue influenced by both natural and human factors. Effective conservation methods are crucial for maintaining soil health.",
+      "template_data": {
+        "title": "Soil Erosion and Conservation",
+        "stages": [
+          {
+            "label": "Soil Erosion",
+            "icon": "earthquake"
+          },
+          {
+            "label": "Causes",
+            "icon": "factory"
+          },
+          {
+            "label": "Conservation Methods",
+            "icon": "tree"
+          },
+          {
+            "label": "Healthy Soil",
+            "icon": "leaf"
+          }
+        ]
+      },
+      "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_1fab4d9b/scene_5.wav"
+    }
+  ]
+}

@@ -1,0 +1,1333 @@
+<!DOCTYPE html>
+<!-- HYPERFRAMES_ENGINE: node compiled=2026-08-26T13:17:02.597Z -->
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="hf-engine" content="node">
+  <title>Understanding Soil Erosion</title>
+
+  <!-- CSS Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&family=Space+Grotesk:wght@400;700&family=Inter:wght@400;500;700;900&family=Cinzel:wght@700&family=Playfair+Display:wght@700&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+  
+  <!-- KaTeX for math rendering -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+  
+  <!-- GSAP for animations -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  
+  <!-- Shared hyperframes JS -->
+  <script src="./shared/theme.js"></script>
+  <script src="./shared/animations.js"></script>
+
+  <style>
+    
+      :root {
+        --theme-primary-color: #0f172a;
+        --theme-secondary-color: #1e293b;
+        --theme-accent-color: #3b82f6;
+        --theme-bg-color: #090d16;
+        --theme-surface-color: #131b2e;
+        --theme-text-color: #ffffff;
+        --theme-muted-text-color: rgba(255, 255, 255, 0.7);
+
+        --theme-font-family: Inter, system-ui, sans-serif;
+        --theme-font-size-title: 56px;
+        --theme-font-size-heading: 34px;
+        --theme-font-size-body: 16px;
+
+        --theme-border-radius-sm: 4px;
+        --theme-border-radius-md: 8px;
+        --theme-border-radius-lg: 16px;
+
+        --theme-spacing-sm: 8px;
+        --theme-spacing-md: 16px;
+        --theme-spacing-lg: 24px;
+
+        --theme-shadow-low: 0 2px 4px rgba(0,0,0,0.1);
+        --theme-shadow-high: 0 4px 16px rgba(0,0,0,0.4);
+      }
+    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 1280px;
+      height: 720px;
+      overflow: hidden;
+      background: var(--theme-bg-color, #090d16);
+      font-family: var(--theme-font-family, 'Inter', system-ui, sans-serif);
+      color: var(--theme-text-color, #ffffff);
+      -webkit-font-smoothing: antialiased;
+    }
+    
+    .composition {
+      width: 1280px;
+      height: 720px;
+      position: relative;
+    }
+    
+    /* Scene wrappers managed by HyperFrames */
+    .scene {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
+    }
+
+    /* Subtitles banner */
+    .subtitles-container {
+      position: absolute;
+      bottom: 45px;
+      left: 8%;
+      right: 8%;
+      text-align: center;
+      font-size: 22px;
+      font-weight: 700;
+      line-height: 1.4;
+      color: #ffffff;
+      z-index: 90;
+      text-shadow: 
+        0 2px 4px rgba(0,0,0,0.9), 
+        0 0 10px rgba(0,0,0,0.9), 
+        1px 1px 0px #000, 
+        -1px -1px 0px #000, 
+        1px -1px 0px #000, 
+        -1px 1px 0px #000;
+      font-family: 'Inter', system-ui, sans-serif;
+    }
+
+    /* Template components specific styles */
+    .title-slide-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px;
+    }
+    .icon-card {
+      width: 140px;
+      height: 140px;
+      border-radius: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 30px;
+      margin-bottom: 40px;
+    }
+    .icon-card svg {
+      width: 100%;
+      height: 100%;
+    }
+    
+    .concept-diagram-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      padding: 60px 80px;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+    }
+    .left-bullets-col {
+      width: 40%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      z-index: 5;
+    }
+    .bullet-card {
+      padding: 16px 20px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      margin-bottom: 16px;
+      font-size: 18px;
+      font-weight: 500;
+      border-radius: 16px;
+    }
+    .mindmap-canvas {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      top: 0;
+      left: 0;
+      z-index: 2;
+    }
+    .center-node {
+      position: absolute;
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-weight: 800;
+      font-size: 20px;
+      z-index: 10;
+      padding: 18px;
+      line-height: 1.2;
+    }
+    .leaf-node {
+      position: absolute;
+      padding: 14px 22px;
+      background: rgba(15, 23, 42, 0.9);
+      border-radius: 16px;
+      font-weight: 700;
+      font-size: 16px;
+      text-align: center;
+      box-shadow: 0 12px 28px rgba(0,0,0,0.3);
+      z-index: 12;
+      white-space: nowrap;
+    }
+
+    .cycle-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 50px 60px;
+    }
+    .cycle-canvas {
+      width: 400px;
+      height: 400px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .cycle-svg {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      top: 0;
+      left: 0;
+      transform: rotate(-90deg);
+    }
+    .cycle-stage {
+      position: absolute;
+      width: 120px;
+      height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      border-radius: 24px;
+      padding: 12px;
+      z-index: 20;
+    }
+    .cycle-stage-badge {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .cycle-stage-label {
+      font-size: 14px;
+      font-weight: 700;
+      text-align: center;
+      line-height: 1.2;
+    }
+
+    .math-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 50px 60px;
+    }
+    .math-formula-board {
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 20px;
+      padding: 24px 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      margin-bottom: 35px;
+      box-shadow: 0 12px 36px rgba(0,0,0,0.3);
+    }
+    .math-step-card {
+      display: flex;
+      align-items: center;
+      border-radius: 16px;
+      padding: 16px 24px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      width: 85%;
+      margin-bottom: 12px;
+    }
+    .math-step-badge {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      color: #000000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 14px;
+      margin-right: 20px;
+      flex-shrink: 0;
+    }
+    .math-step-text {
+      font-size: 20px;
+      font-weight: 600;
+      width: 100%;
+    }
+
+    .comparison-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 50px 60px;
+    }
+    .comparison-grid {
+      display: flex;
+      width: 90%;
+      justify-content: space-between;
+      gap: 40px;
+      margin-top: 20px;
+    }
+    .comparison-column {
+      width: 50%;
+      border-radius: 24px;
+      padding: 30px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.25);
+    }
+    .comparison-col-header {
+      font-size: 26px;
+      font-weight: 800;
+      margin-bottom: 24px;
+      border-bottom: 2px solid;
+      padding-bottom: 12px;
+    }
+    .comparison-bullet {
+      font-size: 18px;
+      font-weight: 500;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+    }
+    .comparison-bullet-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 14px;
+      flex-shrink: 0;
+    }
+
+    .timeline-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 50px 60px;
+    }
+    .timeline-track {
+      position: relative;
+      width: 80%;
+      height: 250px;
+      display: flex;
+      align-items: center;
+    }
+    .timeline-svg {
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 100%;
+      height: 20px;
+      pointer-events: none;
+      z-index: 1;
+    }
+    .timeline-stage {
+      position: absolute;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      z-index: 10;
+      width: 120px;
+    }
+    .timeline-stage-circle {
+      position: relative;
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #090d16 0%, #151824 100%);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+    }
+    .timeline-stage-circle svg {
+      width: 100%;
+      height: 100%;
+    }
+    .timeline-stage-badge {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      color: #000000;
+      font-size: 12px;
+      font-weight: 900;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid #090d16;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+    .timeline-stage-label {
+      margin-top: 16px;
+      font-size: 14px;
+      font-weight: 700;
+      color: #e2e8f0;
+      text-align: center;
+      line-height: 1.3;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+    }
+
+    .database-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 50px 60px;
+    }
+    .database-grid-card {
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+      width: 90%;
+      margin-top: 20px;
+      overflow: hidden;
+    }
+    .database-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 16px;
+    }
+    .database-table th {
+      text-align: left;
+      padding: 16px 20px;
+      font-weight: 800;
+      color: rgba(255, 255, 255, 0.6);
+      border-bottom: 2px solid rgba(255,255,255,0.1);
+    }
+    .database-table td {
+      padding: 16px 20px;
+      font-weight: 600;
+      color: #ffffff;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .venn-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 50px 60px;
+    }
+    .venn-headers {
+      display: flex;
+      justify-content: space-between;
+      width: 600px;
+      margin-bottom: 20px;
+      font-size: 24px;
+      font-weight: 800;
+    }
+    .venn-diagram-canvas {
+      width: 600px;
+      height: 400px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .venn-circle-left {
+      position: absolute;
+      width: 320px;
+      height: 320px;
+      border-radius: 50%;
+      z-index: 1;
+    }
+    .venn-circle-right {
+      position: absolute;
+      width: 320px;
+      height: 320px;
+      border-radius: 50%;
+      z-index: 1;
+    }
+    .venn-content-left {
+      position: absolute;
+      width: 180px;
+      left: 30px;
+      top: 80px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 10;
+    }
+    .venn-content-middle {
+      position: absolute;
+      width: 180px;
+      top: 80px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: center;
+      z-index: 10;
+    }
+    .venn-content-right {
+      position: absolute;
+      width: 180px;
+      right: 30px;
+      top: 80px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 10;
+    }
+    .venn-item-card {
+      font-size: 14px;
+      font-weight: 600;
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 10px 14px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+
+    .quiz-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 50px 60px;
+    }
+    .quiz-card {
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 24px;
+      padding: 36px 40px;
+      width: 85%;
+      margin-top: 20px;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.4);
+    }
+    .quiz-question {
+      font-size: 26px;
+      font-weight: 800;
+      line-height: 1.3;
+      margin-bottom: 30px;
+    }
+    .quiz-options-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .quiz-option {
+      display: flex;
+      align-items: center;
+      padding: 18px 24px;
+      border-radius: 16px;
+      font-size: 18px;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+    .quiz-option-index {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      margin-right: 20px;
+    }
+    
+    .illustrated-canvas {
+      width: 100%;
+      height: 100%;
+      position: relative;
+    }
+    
+    .image-scene-container {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .scene-image {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      box-shadow: 0 12px 48px rgba(0,0,0,0.5);
+      border-radius: 16px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="composition" data-composition-id="root" data-start="0" data-width="1280" data-height="720" data-duration="58.72267573696145">
+
+    <!-- Scene 1: title_slide -->
+    <div class="scene clip" data-start="0" data-duration="12.632018140589569" id="scene-1">
+    
+      <div class="camera-viewport-wrapper" style="width: 100%; height: 100%; position: relative; overflow: hidden; transform-origin: 640px 360px; transform: translate(0px, 0px) scale(1.1) rotate(0deg);">
+        
+      <div class="title-slide-container" id="title-slide-1">
+        <div class="icon-card" id="icon-card-1">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="theme-stroke">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" id="icon-path-1" />
+          </svg>
+        </div>
+        <h1 class="theme-text" id="title-text-1" style="font-size: 56px; font-weight: 900; margin-bottom: 16px; text-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);">Understanding Soil Erosion</h1>
+        <p id="subtitle-text-1" style="font-size: 22px; font-weight: 500; color: rgba(255, 255, 255, 0.7); text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); max-width: 850px; text-align: center; line-height: 1.4;">The Impact of Soil Erosion on Our Environment</p>
+      </div>
+    
+      </div>
+    
+        <!-- Narration Subtitles banner -->
+        <div class="subtitles-container" id="subtitles-1">
+          Today, we will explore soil erosion, a critical environmental issue that affects agriculture and ecosystems. Understanding its causes and effects is vital for sustainable land management.
+        </div>
+      </div>
+    
+    <!-- Scene 2: concept_diagram -->
+    <div class="scene clip" data-start="12.632018140589569" data-duration="12.717324263038549" id="scene-2">
+    
+      <div class="camera-viewport-wrapper" style="width: 100%; height: 100%; position: relative; overflow: hidden; transform-origin: 640px 360px; transform: translate(0px, 0px) scale(1.1) rotate(0deg);">
+        
+      <div class="concept-diagram-container" id="concept-diagram-2">
+        
+
+        <div class="mindmap-canvas" style="position: relative; width: 100%; height: 100%;">
+          <svg viewBox="0 0 1280 720" style="position: absolute; width: 1280px; height: 720px; top: 0; left: 0; z-index: 2; pointer-events: none;">
+            <g id="cd-lines-group-2"></g>
+          </svg>
+          <div class="center-node theme-accent-bg" id="cd-center-2" style="color: #090d16; position: absolute; left: 640px; top: 360px; transform: translate(-50%, -50%); flex-direction: column; "><svg viewBox="0 0 24 24" width="26" height="26" fill="none" class="theme-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; display:block; margin: 0 auto 6px;"><path d="M2 12h4l2-4 3 8 3-8 2 4h4"/><path d="M2 12l1 6M22 12l-1 6"/></svg><span>Soil Erosion</span></div>
+          <div id="cd-leaves-group-2">
+            <div class="leaf-node theme-card-border" id="cd-leaf-2-0" style="position: absolute; transform: translate(-50%, -50%) scale(0); "><svg viewBox="0 0 24 24" width="20" height="20" fill="none" class="theme-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; display:block; margin: 0 auto 6px;"><path d="M12 22v-6"/><path d="M12 16c-4 0-6-2.5-6-5.5C6 6.5 12 2 12 2s6 4.5 6 8.5c0 3-2 5.5-6 5.5z"/></svg><span>Deforestation</span></div><div class="leaf-node theme-card-border" id="cd-leaf-2-1" style="position: absolute; transform: translate(-50%, -50%) scale(0); "><svg viewBox="0 0 24 24" width="20" height="20" fill="none" class="theme-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; display:block; margin: 0 auto 6px;"><circle cx="12" cy="12" r="4"/></svg><span>Overgrazing</span></div><div class="leaf-node theme-card-border" id="cd-leaf-2-2" style="position: absolute; transform: translate(-50%, -50%) scale(0); "><svg viewBox="0 0 24 24" width="20" height="20" fill="none" class="theme-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; display:block; margin: 0 auto 6px;"><path d="M3 21V11l5 3v-3l5 3V8l6 4v9H3z"/></svg><span>Construction</span></div><div class="leaf-node theme-card-border" id="cd-leaf-2-3" style="position: absolute; transform: translate(-50%, -50%) scale(0); "><svg viewBox="0 0 24 24" width="20" height="20" fill="none" class="theme-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; display:block; margin: 0 auto 6px;"><path d="M3 8h11a3 3 0 1 0-3-3M3 12h15a3 3 0 1 1-3 3M3 16h9a2.5 2.5 0 1 1-2.5 2.5"/></svg><span>Natural Forces</span></div>
+          </div>
+        </div>
+      </div>
+    
+      </div>
+    
+        <!-- Narration Subtitles banner -->
+        <div class="subtitles-container" id="subtitles-2">
+          Soil erosion occurs when the top layer of soil is removed, often due to human activities like deforestation and overgrazing, as well as natural forces such as wind and water. Let's break down these causes.
+        </div>
+      </div>
+    
+    <!-- Scene 3: image_scene -->
+    <div class="scene clip" data-start="25.349342403628118" data-duration="10.669342403628118" id="scene-3">
+    
+      <div class="camera-viewport-wrapper" style="width: 100%; height: 100%; position: relative; overflow: hidden; transform-origin: 640px 360px; transform: translate(0px, 0px) scale(1.1) rotate(0deg);">
+        
+      <div class="image-scene-container" id="img-scene-3">
+        <img src="https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/book-processing/Class10_social/chapters/jess101/05_diagrams/images/p10_4_Im2.jpg" class="scene-image" id="img-el-3" />
+        <svg viewBox="0 0 1280 720" style="position: absolute; width: 100%; height: 100%; z-index: 10; pointer-events: none;" id="img-svg-3">
+          <g id="img-annotations-3"></g>
+        </svg>
+      </div>
+    
+      </div>
+    
+        <!-- Narration Subtitles banner -->
+        <div class="subtitles-container" id="subtitles-3">
+          This image shows the severe impact of soil erosion, where deep channels have formed due to the washing away of soil. Such degradation makes the land unfit for cultivation.
+        </div>
+      </div>
+    
+    <!-- Scene 4: taxonomy_tree -->
+    <div class="scene clip" data-start="36.018684807256236" data-duration="8.621315192743763" id="scene-4">
+    
+      <div class="camera-viewport-wrapper" style="width: 100%; height: 100%; position: relative; overflow: hidden; transform-origin: 640px 360px; transform: translate(0px, 0px) scale(1.1) rotate(0deg);">
+        
+      <div class="taxonomy-container" id="taxonomy-4" style="width: 100%; height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; position: relative;">
+        <h2 class="theme-text" style="font-size: 34px; font-weight: 900; margin-bottom: 30px;" id="taxonomy-title-4">Soil Conservation Methods</h2>
+
+        <div class="tree-canvas" style="position: relative; width: 90%; height: 450px; display: flex; flex-direction: column; align-items: center; overflow: visible;">
+          <!-- Root Node -->
+          <div class="root-node theme-accent-bg" id="tax-root-4" style="z-index: 5; padding: 16px 36px; border-radius: 20px; font-size: 24px; font-weight: 800; color: #090d16; box-shadow: 0 10px 25px rgba(0,0,0,0.5); display:flex; align-items:center; gap:10px;">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" class="theme-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; display:block; margin:0;"><path d="M12 3l7 3v6c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6l7-3z"/></svg><span>Soil Conservation</span>
+          </div>
+
+          <!-- Branches Layer -->
+          <div id="tax-branches-4" style="display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; width: 100%; margin-top: 80px; z-index: 5;">
+            
+          <div class="branch-card theme-card-bg theme-card-border" id="tax-branch-4-0" style="padding: 18px 24px; border-radius: 16px; min-width: 180px; text-align: center; font-weight: 700; font-size: 18px; box-shadow: 0 8px 20px rgba(0,0,0,0.4); ">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" class="theme-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; display:block; margin: 0 auto 6px;"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9c.3.6.9 1 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+            <div style="font-weight: 800; margin-bottom: 4px;">Contour Ploughing</div>
+            
+          </div>
+        
+          <div class="branch-card theme-card-bg theme-card-border" id="tax-branch-4-1" style="padding: 18px 24px; border-radius: 16px; min-width: 180px; text-align: center; font-weight: 700; font-size: 18px; box-shadow: 0 8px 20px rgba(0,0,0,0.4); ">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" class="theme-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; display:block; margin: 0 auto 6px;"><path d="M3 20l6-11 4 6 3-4 5 9H3z"/></svg>
+            <div style="font-weight: 800; margin-bottom: 4px;">Terrace Farming</div>
+            
+          </div>
+        
+          <div class="branch-card theme-card-bg theme-card-border" id="tax-branch-4-2" style="padding: 18px 24px; border-radius: 16px; min-width: 180px; text-align: center; font-weight: 700; font-size: 18px; box-shadow: 0 8px 20px rgba(0,0,0,0.4); ">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" class="theme-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; display:block; margin: 0 auto 6px;"><path d="M11 20A7 7 0 0 1 4 13c0-6 7-11 7-11s7 5 7 11a7 7 0 0 1-7 7z"/><path d="M11 20v-9"/></svg>
+            <div style="font-weight: 800; margin-bottom: 4px;">Strip Cropping</div>
+            
+          </div>
+        
+          <div class="branch-card theme-card-bg theme-card-border" id="tax-branch-4-3" style="padding: 18px 24px; border-radius: 16px; min-width: 180px; text-align: center; font-weight: 700; font-size: 18px; box-shadow: 0 8px 20px rgba(0,0,0,0.4); ">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" class="theme-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; display:block; margin: 0 auto 6px;"><path d="M12 22v-6"/><path d="M12 16c-4 0-6-2.5-6-5.5C6 6.5 12 2 12 2s6 4.5 6 8.5c0 3-2 5.5-6 5.5z"/></svg>
+            <div style="font-weight: 800; margin-bottom: 4px;">Shelter Belts</div>
+            
+          </div>
+        
+          </div>
+        </div>
+      </div>
+    
+      </div>
+    
+        <!-- Narration Subtitles banner -->
+        <div class="subtitles-container" id="subtitles-4">
+          To combat soil erosion, various conservation methods can be employed. These methods can be categorized into several key strategies.
+        </div>
+      </div>
+    
+    <!-- Scene 5: cycle_template -->
+    <div class="scene clip" data-start="44.64" data-duration="14.08267573696145" id="scene-5">
+    
+      <div class="camera-viewport-wrapper" style="width: 100%; height: 100%; position: relative; overflow: hidden; transform-origin: 640px 360px; transform: translate(0px, 0px) scale(1.1) rotate(0deg);">
+        
+      <div class="cycle-container" id="cycle-5">
+        <h2 class="theme-text" style="font-size: 36px; font-weight: 800; text-align: center; margin-bottom: 30px;" id="cycle-title-5">Cycle of Soil Erosion and Conservation</h2>
+        <div class="cycle-canvas">
+          <svg class="cycle-svg">
+            <circle cx="200" cy="200" r="140" fill="none" stroke-width="4" id="cycle-circle-path-5" class="theme-stroke" style="opacity: 0.35;"></circle>
+            <circle cx="200" cy="200" r="7" fill="white" id="cycle-orbit-dot-5" class="theme-fill"></circle>
+          </svg>
+          <div id="cycle-stages-5">
+            
+              <div class="cycle-stage theme-card-bg theme-card-border" id="cycle-stage-5-0">
+                <div class="cycle-stage-badge theme-text">Step 1</div>
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" class="theme-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; display:block; margin: 0 auto 6px;"><path d="M2 12h4l2-4 3 8 3-8 2 4h4"/><path d="M2 12l1 6M22 12l-1 6"/></svg>
+                <div class="cycle-stage-label">Soil Erosion</div>
+              </div>
+            
+              <div class="cycle-stage theme-card-bg theme-card-border" id="cycle-stage-5-1">
+                <div class="cycle-stage-badge theme-text">Step 2</div>
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" class="theme-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; display:block; margin: 0 auto 6px;"><path d="M3 21V11l5 3v-3l5 3V8l6 4v9H3z"/></svg>
+                <div class="cycle-stage-label">Impact on Land</div>
+              </div>
+            
+              <div class="cycle-stage theme-card-bg theme-card-border" id="cycle-stage-5-2">
+                <div class="cycle-stage-badge theme-text">Step 3</div>
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" class="theme-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; display:block; margin: 0 auto 6px;"><path d="M12 3l7 3v6c0 5-3.5 8-7 9-3.5-1-7-4-7-9V6l7-3z"/></svg>
+                <div class="cycle-stage-label">Conservation Methods</div>
+              </div>
+            
+              <div class="cycle-stage theme-card-bg theme-card-border" id="cycle-stage-5-3">
+                <div class="cycle-stage-badge theme-text">Step 4</div>
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" class="theme-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; display:block; margin: 0 auto 6px;"><path d="M11 20A7 7 0 0 1 4 13c0-6 7-11 7-11s7 5 7 11a7 7 0 0 1-7 7z"/><path d="M11 20v-9"/></svg>
+                <div class="cycle-stage-label">Sustainable Practices</div>
+              </div>
+            
+          </div>
+          <div style="position: absolute; font-size: 12px; text-transform: uppercase; font-weight: 800; letter-spacing: 1px; color: rgba(255, 255, 255, 0.4);" id="cycle-center-label-5">🔄 Cycle Flow</div>
+        </div>
+      </div>
+    
+      </div>
+    
+        <!-- Narration Subtitles banner -->
+        <div class="subtitles-container" id="subtitles-5">
+          In summary, soil erosion is a continuous process influenced by both human actions and natural forces. By implementing effective conservation methods, we can protect our soil and ensure sustainable agriculture.
+        </div>
+      </div>
+    
+      <audio class="clip" data-start="0" data-duration="12.632018140589569" src="./scene_1.wav" id="audio-scene-1"></audio>
+      
+      <audio class="clip" data-start="12.632018140589569" data-duration="12.717324263038549" src="./scene_2.wav" id="audio-scene-2"></audio>
+      
+      <audio class="clip" data-start="25.349342403628118" data-duration="10.669342403628118" src="./scene_3.wav" id="audio-scene-3"></audio>
+      
+      <audio class="clip" data-start="36.018684807256236" data-duration="8.621315192743763" src="./scene_4.wav" id="audio-scene-4"></audio>
+      
+      <audio class="clip" data-start="44.64" data-duration="14.08267573696145" src="./scene_5.wav" id="audio-scene-5"></audio>
+      
+  </div>
+
+  <script>
+    // active theme variables loaded dynamically
+    const storyboardThemeName = "Science";
+    const theme = window.getTheme(storyboardThemeName);
+    
+    // Apply styling rules
+    document.body.style.background = theme.background;
+    document.body.style.fontFamily = theme.fontFamily;
+    document.body.style.color = theme.textColor;
+    
+    // Dynamic Styling Updates across all template headers
+    document.querySelectorAll('.theme-text').forEach(el => {
+      el.style.color = theme.accentColor;
+    });
+    document.querySelectorAll('.theme-stroke').forEach(el => {
+      el.style.stroke = theme.accentColor;
+    });
+    document.querySelectorAll('.theme-fill').forEach(el => {
+      el.style.fill = theme.accentColor;
+    });
+    document.querySelectorAll('.theme-accent-bg').forEach(el => {
+      el.style.background = theme.accentColor;
+    });
+    document.querySelectorAll('.theme-card-bg').forEach(el => {
+      el.style.background = theme.cardBackground;
+    });
+    document.querySelectorAll('.theme-card-border').forEach(el => {
+      el.style.border = theme.cardBorder;
+    });
+    document.querySelectorAll('.theme-accent-border').forEach(el => {
+      el.style.borderColor = theme.accentColor;
+    });
+
+    // Populate dynamic LaTeX inputs in DOM
+    const rawData = [{"scene_no":1,"template_id":"title_slide","teacher_script":"Today, we will explore soil erosion, a critical environmental issue that affects agriculture and ecosystems. Understanding its causes and effects is vital for sustainable land management.","metadata":{"title":"Understanding Soil Erosion","description":"","learning_objective":"Understanding Soil Erosion","concept_importance":"medium","instruction_type":"EXPLAIN","difficulty":"intermediate","teaching_strategy":"sequential","reinforcement_level":"medium","quiz_hints":"","analytics_tags":""},"nodes":[{"id":"title_1","type":"TEXT","component":{"id":"title_comp_1","type":"TEXT","properties":{"text":"Understanding Soil Erosion"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},"children":[],"metadata":{}},{"id":"subtitle_1","type":"TEXT","component":{"id":"subtitle_comp_1","type":"TEXT","properties":{"text":"The Impact of Soil Erosion on Our Environment"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},"children":[],"metadata":{}},{"id":"icon_card_1","type":"CUSTOM","component":{"id":"icon_comp_1","type":"CUSTOM","properties":{"type":"icon","name":"shield"},"style":{"zIndex":10},"children":[],"metadata":{},"visibility":true},"children":[],"metadata":{}}],"timeline":{"animation_style":"stagger_in","animation_action":"none","audio_url":"./scene_1.wav","audio_asset":{"id":"scene_audio_1","provider":"LocalPNGProvider","path":"./scene_1.wav","format":"wav","dimensions":{"width":0,"height":0},"metadata":{},"quality":"medium","source":"local","license":"proprietary","status":"resolved","future_cache_info":{}},"durationInFrames":null},"camera":{"camera_id":"cam_nb6g1o93k","position":{"x":640,"y":360},"target":null,"zoom":1.1,"rotation":0,"viewport":{"width":1280,"height":720},"anchor":{"x":0.5,"y":0.5},"padding":0,"mode":"STATIC","timeline":[],"metadata":{},"future_constraints":{}},"layout":{"layout_id":"lay_ffv82yvme","layout_type":"FREE","constraints":null,"alignment":"CENTER","padding":{"top":0,"left":0,"bottom":0,"right":0},"margin":{"top":0,"left":0,"bottom":0,"right":0},"spacing":0,"safe_area":null,"responsive":true,"metadata":{}},"focuses":[],"theme_id":"default","template_data":{"title":"Understanding Soil Erosion","subtitle":"The Impact of Soil Erosion on Our Environment"},"audio_url":"https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_2b16f12b/scene_1.wav","durationInFrames":null,"start":0,"duration":12.632018140589569},{"scene_no":2,"template_id":"concept_diagram","teacher_script":"Soil erosion occurs when the top layer of soil is removed, often due to human activities like deforestation and overgrazing, as well as natural forces such as wind and water. Let's break down these causes.","metadata":{"title":"Causes of Soil Erosion","description":"","learning_objective":"Understanding Soil Erosion","concept_importance":"medium","instruction_type":"EXPLAIN","difficulty":"intermediate","teaching_strategy":"sequential","reinforcement_level":"medium","quiz_hints":"","analytics_tags":""},"nodes":[{"id":"center_2","type":"TEXT","component":{"id":"center_comp_2","type":"TEXT","properties":{"text":"Soil Erosion","icon":"earthquake"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},"children":[],"metadata":{}},{"id":"leaves_2","type":"GROUP","component":{"id":"leaves_comp_2","type":"GROUP","properties":{},"style":{"zIndex":10},"children":[{"id":"leaf_comp_2_0","type":"TEXT","properties":{"text":"Deforestation","icon":"tree"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},{"id":"leaf_comp_2_1","type":"TEXT","properties":{"text":"Overgrazing","icon":"cow"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},{"id":"leaf_comp_2_2","type":"TEXT","properties":{"text":"Construction","icon":"factory"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},{"id":"leaf_comp_2_3","type":"TEXT","properties":{"text":"Natural Forces","icon":"wind"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true}],"metadata":{},"visibility":true},"children":[{"id":"leaf_2_0","type":"TEXT","component":{"id":"leaf_comp_2_0","type":"TEXT","properties":{"text":"Deforestation","icon":"tree"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},"children":[],"metadata":{}},{"id":"leaf_2_1","type":"TEXT","component":{"id":"leaf_comp_2_1","type":"TEXT","properties":{"text":"Overgrazing","icon":"cow"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},"children":[],"metadata":{}},{"id":"leaf_2_2","type":"TEXT","component":{"id":"leaf_comp_2_2","type":"TEXT","properties":{"text":"Construction","icon":"factory"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},"children":[],"metadata":{}},{"id":"leaf_2_3","type":"TEXT","component":{"id":"leaf_comp_2_3","type":"TEXT","properties":{"text":"Natural Forces","icon":"wind"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},"children":[],"metadata":{}}],"metadata":{}}],"timeline":{"animation_style":"stagger_in","animation_action":"none","audio_url":"./scene_2.wav","audio_asset":{"id":"scene_audio_2","provider":"LocalPNGProvider","path":"./scene_2.wav","format":"wav","dimensions":{"width":0,"height":0},"metadata":{},"quality":"medium","source":"local","license":"proprietary","status":"resolved","future_cache_info":{}},"durationInFrames":null},"camera":{"camera_id":"cam_2usq18vt6","position":{"x":640,"y":360},"target":null,"zoom":1.1,"rotation":0,"viewport":{"width":1280,"height":720},"anchor":{"x":0.5,"y":0.5},"padding":0,"mode":"STATIC","timeline":[],"metadata":{},"future_constraints":{}},"layout":{"layout_id":"lay_4n4k5v633","layout_type":"FREE","constraints":null,"alignment":"CENTER","padding":{"top":0,"left":0,"bottom":0,"right":0},"margin":{"top":0,"left":0,"bottom":0,"right":0},"spacing":0,"safe_area":null,"responsive":true,"metadata":{}},"focuses":[],"theme_id":"default","template_data":{"title":"Causes of Soil Erosion","central_node":"Soil Erosion","leaf_nodes":["Deforestation","Overgrazing","Construction","Natural Forces"]},"audio_url":"https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_2b16f12b/scene_2.wav","durationInFrames":null,"start":12.632018140589569,"duration":12.717324263038549},{"scene_no":3,"template_id":"image_scene","teacher_script":"This image shows the severe impact of soil erosion, where deep channels have formed due to the washing away of soil. Such degradation makes the land unfit for cultivation.","metadata":{"title":"Effects of Soil Erosion","description":"","learning_objective":"Understanding Soil Erosion","concept_importance":"medium","instruction_type":"EXPLAIN","difficulty":"intermediate","teaching_strategy":"sequential","reinforcement_level":"medium","quiz_hints":"","analytics_tags":""},"nodes":[{"id":"image_3","type":"IMAGE","component":{"id":"image_comp_3","type":"IMAGE","properties":{"url":"https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/book-processing/Class10_social/chapters/jess101/05_diagrams/images/p10_4_Im2.jpg","resolvedAsset":{"id":"fallback_p10_4_Im2","provider":"fallback","path":"https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/book-processing/Class10_social/chapters/jess101/05_diagrams/images/p10_4_Im2.jpg","format":"jpg","dimensions":{"width":0,"height":0},"metadata":{"concept":"p10_4_Im2","subject":"general"},"quality":"medium","source":"local","license":"proprietary","status":"fallback","future_cache_info":{}}},"style":{"width":"100%","height":"100%","zIndex":10},"children":[],"metadata":{},"visibility":true},"children":[],"metadata":{}}],"timeline":{"animation_style":"stagger_in","animation_action":"none","audio_url":"./scene_3.wav","audio_asset":{"id":"scene_audio_3","provider":"LocalPNGProvider","path":"./scene_3.wav","format":"wav","dimensions":{"width":0,"height":0},"metadata":{},"quality":"medium","source":"local","license":"proprietary","status":"resolved","future_cache_info":{}},"durationInFrames":null},"camera":{"camera_id":"cam_6hsmyt4jq","position":{"x":640,"y":360},"target":null,"zoom":1.1,"rotation":0,"viewport":{"width":1280,"height":720},"anchor":{"x":0.5,"y":0.5},"padding":0,"mode":"STATIC","timeline":[],"metadata":{},"future_constraints":{}},"layout":{"layout_id":"lay_zcsegnhwd","layout_type":"FREE","constraints":null,"alignment":"CENTER","padding":{"top":0,"left":0,"bottom":0,"right":0},"margin":{"top":0,"left":0,"bottom":0,"right":0},"spacing":0,"safe_area":null,"responsive":true,"metadata":{}},"focuses":[],"theme_id":"default","template_data":{"title":"Effects of Soil Erosion","image_url":"https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/book-processing/Class10_social/chapters/jess101/05_diagrams/images/p10_4_Im2.jpg","annotations":[{"x":10,"y":20,"text":"Deep channels formed by erosion"}]},"audio_url":"https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_2b16f12b/scene_3.wav","durationInFrames":null,"start":25.349342403628118,"duration":10.669342403628118},{"scene_no":4,"template_id":"taxonomy_tree","teacher_script":"To combat soil erosion, various conservation methods can be employed. These methods can be categorized into several key strategies.","metadata":{"title":"Soil Conservation Methods","description":"","learning_objective":"Understanding Soil Erosion","concept_importance":"medium","instruction_type":"EXPLAIN","difficulty":"intermediate","teaching_strategy":"sequential","reinforcement_level":"medium","quiz_hints":"","analytics_tags":""},"nodes":[{"id":"title_4","type":"TEXT","component":{"id":"title_comp_4","type":"TEXT","properties":{"text":"Soil Conservation Methods"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},"children":[],"metadata":{}},{"id":"root_4","type":"TEXT","component":{"id":"root_comp_4","type":"TEXT","properties":{"text":"Soil Conservation","icon":"shield"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},"children":[],"metadata":{}},{"id":"branches_4","type":"GROUP","component":{"id":"branches_comp_4","type":"GROUP","properties":{},"style":{"zIndex":10},"children":[{"id":"branch_comp_4_0","type":"TEXT","properties":{"text":"Contour Ploughing","sub":[],"icon":"gear"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},{"id":"branch_comp_4_1","type":"TEXT","properties":{"text":"Terrace Farming","sub":[],"icon":"mountain"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},{"id":"branch_comp_4_2","type":"TEXT","properties":{"text":"Strip Cropping","sub":[],"icon":"leaf"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},{"id":"branch_comp_4_3","type":"TEXT","properties":{"text":"Shelter Belts","sub":[],"icon":"tree"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true}],"metadata":{},"visibility":true},"children":[{"id":"branch_4_0","type":"TEXT","component":{"id":"branch_comp_4_0","type":"TEXT","properties":{"text":"Contour Ploughing","sub":[],"icon":"gear"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},"children":[],"metadata":{}},{"id":"branch_4_1","type":"TEXT","component":{"id":"branch_comp_4_1","type":"TEXT","properties":{"text":"Terrace Farming","sub":[],"icon":"mountain"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},"children":[],"metadata":{}},{"id":"branch_4_2","type":"TEXT","component":{"id":"branch_comp_4_2","type":"TEXT","properties":{"text":"Strip Cropping","sub":[],"icon":"leaf"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},"children":[],"metadata":{}},{"id":"branch_4_3","type":"TEXT","component":{"id":"branch_comp_4_3","type":"TEXT","properties":{"text":"Shelter Belts","sub":[],"icon":"tree"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},"children":[],"metadata":{}}],"metadata":{}}],"timeline":{"animation_style":"stagger_in","animation_action":"none","audio_url":"./scene_4.wav","audio_asset":{"id":"scene_audio_4","provider":"LocalPNGProvider","path":"./scene_4.wav","format":"wav","dimensions":{"width":0,"height":0},"metadata":{},"quality":"medium","source":"local","license":"proprietary","status":"resolved","future_cache_info":{}},"durationInFrames":null},"camera":{"camera_id":"cam_mzmlnqocj","position":{"x":640,"y":360},"target":null,"zoom":1.1,"rotation":0,"viewport":{"width":1280,"height":720},"anchor":{"x":0.5,"y":0.5},"padding":0,"mode":"STATIC","timeline":[],"metadata":{},"future_constraints":{}},"layout":{"layout_id":"lay_mfvpuwpc6","layout_type":"FREE","constraints":null,"alignment":"CENTER","padding":{"top":0,"left":0,"bottom":0,"right":0},"margin":{"top":0,"left":0,"bottom":0,"right":0},"spacing":0,"safe_area":null,"responsive":true,"metadata":{}},"focuses":[],"theme_id":"default","template_data":{"title":"Soil Conservation Methods","root":{"label":"Soil Conservation","icon":"shield","children":[{"label":"Contour Ploughing","icon":"gear","children":[]},{"label":"Terrace Farming","icon":"mountain","children":[]},{"label":"Strip Cropping","icon":"leaf","children":[]},{"label":"Shelter Belts","icon":"tree","children":[]}]}},"audio_url":"https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_2b16f12b/scene_4.wav","durationInFrames":null,"start":36.018684807256236,"duration":8.621315192743763},{"scene_no":5,"template_id":"cycle_template","teacher_script":"In summary, soil erosion is a continuous process influenced by both human actions and natural forces. By implementing effective conservation methods, we can protect our soil and ensure sustainable agriculture.","metadata":{"title":"Cycle of Soil Erosion and Conservation","description":"","learning_objective":"Understanding Soil Erosion","concept_importance":"medium","instruction_type":"EXPLAIN","difficulty":"intermediate","teaching_strategy":"sequential","reinforcement_level":"medium","quiz_hints":"","analytics_tags":""},"nodes":[{"id":"title_5","type":"TEXT","component":{"id":"title_comp_5","type":"TEXT","properties":{"text":"Cycle of Soil Erosion and Conservation"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},"children":[],"metadata":{}},{"id":"stages_5","type":"GROUP","component":{"id":"stages_comp_5","type":"GROUP","properties":{},"style":{"zIndex":10},"children":[{"id":"stage_comp_5_0","type":"TEXT","properties":{"text":"Soil Erosion","icon":"earthquake"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},{"id":"stage_comp_5_1","type":"TEXT","properties":{"text":"Impact on Land","icon":"factory"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},{"id":"stage_comp_5_2","type":"TEXT","properties":{"text":"Conservation Methods","icon":"shield"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},{"id":"stage_comp_5_3","type":"TEXT","properties":{"text":"Sustainable Practices","icon":"leaf"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true}],"metadata":{},"visibility":true},"children":[{"id":"stage_5_0","type":"TEXT","component":{"id":"stage_comp_5_0","type":"TEXT","properties":{"text":"Soil Erosion","icon":"earthquake"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},"children":[],"metadata":{}},{"id":"stage_5_1","type":"TEXT","component":{"id":"stage_comp_5_1","type":"TEXT","properties":{"text":"Impact on Land","icon":"factory"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},"children":[],"metadata":{}},{"id":"stage_5_2","type":"TEXT","component":{"id":"stage_comp_5_2","type":"TEXT","properties":{"text":"Conservation Methods","icon":"shield"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},"children":[],"metadata":{}},{"id":"stage_5_3","type":"TEXT","component":{"id":"stage_comp_5_3","type":"TEXT","properties":{"text":"Sustainable Practices","icon":"leaf"},"style":{"fontFamily":"Inter","fontSize":"16px","color":"#FFFFFF","zIndex":10},"children":[],"metadata":{},"visibility":true},"children":[],"metadata":{}}],"metadata":{}},{"id":"orbit_dot_5","type":"SHAPE","component":{"id":"orbit_dot_comp_5","type":"SHAPE","properties":{"shapeType":"circle"},"style":{"fill":"none","stroke":"#FFFFFF","strokeWidth":2,"zIndex":10},"children":[],"metadata":{},"visibility":true},"children":[],"metadata":{}}],"timeline":{"animation_style":"stagger_in","animation_action":"none","audio_url":"./scene_5.wav","audio_asset":{"id":"scene_audio_5","provider":"LocalPNGProvider","path":"./scene_5.wav","format":"wav","dimensions":{"width":0,"height":0},"metadata":{},"quality":"medium","source":"local","license":"proprietary","status":"resolved","future_cache_info":{}},"durationInFrames":null},"camera":{"camera_id":"cam_u8h3n0dkr","position":{"x":640,"y":360},"target":null,"zoom":1.1,"rotation":0,"viewport":{"width":1280,"height":720},"anchor":{"x":0.5,"y":0.5},"padding":0,"mode":"STATIC","timeline":[],"metadata":{},"future_constraints":{}},"layout":{"layout_id":"lay_tnb1u04ll","layout_type":"FREE","constraints":null,"alignment":"CENTER","padding":{"top":0,"left":0,"bottom":0,"right":0},"margin":{"top":0,"left":0,"bottom":0,"right":0},"spacing":0,"safe_area":null,"responsive":true,"metadata":{}},"focuses":[],"theme_id":"default","template_data":{"title":"Cycle of Soil Erosion and Conservation","stages":[{"label":"Soil Erosion","icon":"earthquake"},{"label":"Impact on Land","icon":"factory"},{"label":"Conservation Methods","icon":"shield"},{"label":"Sustainable Practices","icon":"leaf"}]},"audio_url":"https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_2b16f12b/scene_5.wav","durationInFrames":null,"start":44.64,"duration":14.08267573696145}];
+    
+    rawData.forEach(scene => {
+      const sId = scene.scene_no;
+      const data = scene.template_data || {};
+      
+      if (scene.template_id === 'math_derivation') {
+        const fEl = document.getElementById('math-formula-' + sId);
+        if (fEl && data.formula) {
+          fEl.innerHTML = katex.renderToString(data.formula.trim().replace(/^\$+|\$+$/g, ''), { throwOnError: false });
+        }
+        // Prefer normalized steps; fall back to equation_steps from LLM payloads
+        const mathSteps = (data.steps && data.steps.length)
+          ? data.steps
+          : (data.equation_steps || []).map(function(s) {
+              if (typeof s === 'string') return s;
+              var label = (s && (s.step || s.label)) || '';
+              var value = (s && (s.value || s.result)) || '';
+              return label && value ? (label + ': ' + value) : (label || value || '');
+            });
+        mathSteps.forEach((step, sIdx) => {
+          const sEl = document.getElementById('math-step-text-' + sId + '-' + sIdx);
+          if (sEl && typeof step === 'string' && step.trim()) {
+            try {
+              sEl.innerHTML = katex.renderToString(step.trim().replace(/^\$+|\$+$/g, ''), { throwOnError: false });
+            } catch (e) {
+              sEl.textContent = step;
+            }
+          }
+        });
+      }
+    });
+
+    // Center and scale illustrated SVGs dynamically
+    rawData.forEach(scene => {
+      const sId = scene.scene_no;
+      if (scene.template_id === 'illustrated_scene') {
+        const group = document.getElementById('ill-group-' + sId);
+        if (group) {
+          const bbox = group.getBBox();
+          if (bbox.width > 0 && bbox.height > 0) {
+            const targetWidth = 1280 * 0.70;
+            const targetHeight = 720 * 0.70;
+            const scaleX = targetWidth / bbox.width;
+            const scaleY = targetHeight / bbox.height;
+            const scale = Math.min(2.0, Math.min(scaleX, scaleY));
+            const dx = 640 - (bbox.x + bbox.width / 2) * scale;
+            const dy = 360 - (bbox.y + bbox.height / 2) * scale;
+            group.setAttribute("transform", 'translate(' + dx + ', ' + dy + ') scale(' + scale + ')');
+          }
+        }
+      }
+    });
+
+    // Build the master timeline
+    const mainTimeline = gsap.timeline();
+  
+    // Scene 1 (title_slide) Animation Timeline
+    {
+      const sceneTl = gsap.timeline();
+
+      sceneTl.fromTo('#scene-1 .camera-viewport-wrapper',
+        { scale: 1.0, x: 0, y: 0 },
+        { scale: 1.1, x: 0, y: 0, duration: 12.6, ease: 'power1.inOut' },
+        0
+      );
+      
+      sceneTl.fromTo('#icon-card-1', { opacity: 0, scale: 0.4 }, { opacity: 1, scale: 1, duration: 0.6, ease: 'back.out(1.7)' });
+      sceneTl.fromTo('#title-text-1', { opacity: 0, y: 40 }, { opacity: 1, y: 0, duration: 0.5, ease: 'power3.out' }, 0.2);
+      sceneTl.fromTo('#subtitle-text-1', { opacity: 0, y: 15 }, { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out' }, 0.4);
+    
+      mainTimeline.add(sceneTl, 0);
+    }
+    
+    // Scene 2 (concept_diagram) Animation Timeline
+    {
+      const sceneTl = gsap.timeline();
+      sceneTl.fromTo('#scene-2', { opacity: 0 }, { opacity: 1, duration: 0.4, ease: 'power2.out' });
+
+      sceneTl.fromTo('#scene-2 .camera-viewport-wrapper',
+        { scale: 1.0, x: 0, y: 0 },
+        { scale: 1.1, x: 0, y: 0, duration: 12.7, ease: 'power1.inOut' },
+        0
+      );
+      
+      sceneTl.fromTo('#cd-center-2', { scale: 0 }, { scale: 1, duration: 0.6, ease: 'back.out(1.7)' }, 0.2);
+      
+      
+
+      const linesGroup_2 = document.getElementById('cd-lines-group-2');
+      const leafNodesData_2 = ["Deforestation","Overgrazing","Construction","Natural Forces"];
+      const dur_2 = 12.717324263038549;
+      const timeStep_2 = 2.804331065759637;
+      
+      leafNodesData_2.forEach((node, idx) => {
+        const total = leafNodesData_2.length;
+        let angle = 0;
+        if (undefined) {
+          angle = -Math.PI / 3 + (idx * (2 * Math.PI / 3)) / Math.max(1, total - 1);
+        } else {
+          const leftNodes = [];
+          const rightNodes = [];
+          for (let i = 0; i < total; i++) {
+            if (i % 2 === 0) rightNodes.push(i);
+            else leftNodes.push(i);
+          }
+          if (idx % 2 === 0) {
+            const k = rightNodes.indexOf(idx);
+            const M = rightNodes.length;
+            angle = -Math.PI / 4.5 + (k * (2 * Math.PI / 4.5)) / Math.max(1, M - 1);
+          } else {
+            const k = leftNodes.indexOf(idx);
+            const L = leftNodes.length;
+            angle = Math.PI - Math.PI / 4.5 + (k * (2 * Math.PI / 4.5)) / Math.max(1, L - 1);
+          }
+        }
+        
+        const x2 = 640 + 270 * Math.cos(angle);
+        const y2 = 360 + 270 * Math.sin(angle);
+        
+        const lineEl = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        lineEl.setAttribute('x1', 640);
+        lineEl.setAttribute('y1', 360);
+        lineEl.setAttribute('x2', 640);
+        lineEl.setAttribute('y2', 360);
+        lineEl.setAttribute('stroke', theme.accentColor);
+        lineEl.setAttribute('stroke-width', '3.5');
+        lineEl.setAttribute('stroke-linecap', 'round');
+        lineEl.style.filter = 'drop-shadow(0 0 6px ' + theme.accentColor + ')';
+        lineEl.style.opacity = '0.85';
+        linesGroup_2.appendChild(lineEl);
+
+        const leafNode = document.getElementById('cd-leaf-2-' + idx);
+        if (leafNode) {
+          leafNode.style.left = x2 + 'px';
+          leafNode.style.top = y2 + 'px';
+          // Centering (xPercent/yPercent) and scale must both be set through GSAP,
+          // not as a hand-written 'transform' string - GSAP's CSSPlugin owns the
+          // transform property once it tweens any of x/y/scale/rotation, and a
+          // percentage-based translate() baked into a raw transform string doesn't
+          // interpolate correctly against GSAP's own composited value, leaving the
+          // element permanently stuck at scale(0) (invisible, 0x0) even though its
+          // opacity animation completes normally.
+          gsap.set(leafNode, { xPercent: -50, yPercent: -50, scale: 0 });
+        }
+
+        const revealStart = 0.5 + (idx * timeStep_2);
+
+        sceneTl.to(lineEl, {
+          attr: { x2: x2, y2: y2 },
+          duration: 0.6,
+          ease: 'power2.out'
+        }, revealStart);
+
+        if (leafNode) {
+          sceneTl.to(leafNode, {
+            scale: 1,
+            duration: 0.5,
+            ease: 'back.out(1.7)'
+          }, revealStart + 0.2);
+
+          // Active node pulse glow
+          sceneTl.to(leafNode, {
+            boxShadow: '0 0 24px ' + theme.accentColor,
+            duration: 0.4,
+            yoyo: true,
+            repeat: 1
+          }, revealStart + 0.6);
+        }
+      });
+    
+      mainTimeline.add(sceneTl, 12.632018140589569);
+    }
+    
+    // Scene 3 (image_scene) Animation Timeline
+    {
+      const sceneTl = gsap.timeline();
+      sceneTl.fromTo('#scene-3', { opacity: 0 }, { opacity: 1, duration: 0.4, ease: 'power2.out' });
+
+      sceneTl.fromTo('#scene-3 .camera-viewport-wrapper',
+        { scale: 1.0, x: 0, y: 0 },
+        { scale: 1.1, x: 0, y: 0, duration: 10.7, ease: 'power1.inOut' },
+        0
+      );
+      
+      sceneTl.fromTo('#img-el-3', { opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1, duration: 0.6, ease: 'power3.out' });
+      sceneTl.to('#img-el-3', { scale: 1.15, duration: 10.669342403628118, ease: 'none' }, 0);
+    
+      mainTimeline.add(sceneTl, 25.349342403628118);
+    }
+    
+    // Scene 4 (taxonomy_tree) Animation Timeline
+    {
+      const sceneTl = gsap.timeline();
+      sceneTl.fromTo('#scene-4', { opacity: 0 }, { opacity: 1, duration: 0.4, ease: 'power2.out' });
+
+      sceneTl.fromTo('#scene-4 .camera-viewport-wrapper',
+        { scale: 1.0, x: 0, y: 0 },
+        { scale: 1.1, x: 0, y: 0, duration: 8.6, ease: 'power1.inOut' },
+        0
+      );
+      
+      sceneTl.fromTo('#taxonomy-title-4', { opacity: 0, y: -20 }, { opacity: 1, y: 0, duration: 0.4 });
+      sceneTl.fromTo('#tax-root-4', { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.5, ease: 'back.out(1.5)' }, 0.2);
+
+      // Root gets a slow ambient pulse for the rest of the scene, not just a
+      // one-shot entrance, so the origin of the tree stays visually alive
+      // while each branch reveals below it.
+      sceneTl.to('#tax-root-4', {
+        boxShadow: '0 14px 32px rgba(0,0,0,0.5), 0 0 22px ' + theme.accentColor,
+        duration: 1.1,
+        yoyo: true,
+        repeat: 240
+      }, 0.8);
+
+      const branchTotal_4 = 4;
+      const timeStep_4 = 0.35;
+      for (let idx = 0; idx < branchTotal_4; idx++) {
+        const branchEl = document.getElementById('tax-branch-4-' + idx);
+        if (!branchEl) continue;
+        const revealStart = 0.6 + idx * timeStep_4;
+        sceneTl.fromTo(branchEl, { opacity: 0, y: 30, scale: 0.8 }, { opacity: 1, y: 0, scale: 1, duration: 0.5, ease: 'power2.out' }, revealStart);
+        // Brief highlight pulse on arrival, echoing the parent's glow, so each
+        // branch reads as "handed down from the root" rather than appearing
+        // independently.
+        sceneTl.to(branchEl, {
+          boxShadow: '0 8px 20px rgba(0,0,0,0.4), 0 0 16px ' + theme.accentColor,
+          duration: 0.35,
+          yoyo: true,
+          repeat: 1
+        }, revealStart + 0.3);
+      }
+    
+      mainTimeline.add(sceneTl, 36.018684807256236);
+    }
+    
+    // Scene 5 (cycle_template) Animation Timeline
+    {
+      const sceneTl = gsap.timeline();
+      sceneTl.fromTo('#scene-5', { opacity: 0 }, { opacity: 1, duration: 0.4, ease: 'power2.out' });
+
+      sceneTl.fromTo('#scene-5 .camera-viewport-wrapper',
+        { scale: 1.0, x: 0, y: 0 },
+        { scale: 1.1, x: 0, y: 0, duration: 14.1, ease: 'power1.inOut' },
+        0
+      );
+      
+      sceneTl.fromTo('#cycle-title-5', { opacity: 0, y: -20 }, { opacity: 1, y: 0, duration: 0.6 }, 0.2);
+      
+      const circlePath_5 = document.getElementById('cycle-circle-path-5');
+      if (circlePath_5) {
+        const length = 2 * Math.PI * 140;
+        gsap.set(circlePath_5, { strokeDasharray: length, strokeDashoffset: length });
+        sceneTl.to(circlePath_5, { strokeDashoffset: 0, duration: 14.1, ease: 'none' }, 0.4);
+      }
+
+      const totalStages_5 = 4;
+      const stagesData_5 = [{"label":"Soil Erosion","icon":"earthquake"},{"label":"Impact on Land","icon":"factory"},{"label":"Conservation Methods","icon":"shield"},{"label":"Sustainable Practices","icon":"leaf"}];
+      const timeStep_5 = 3.1456689342403625;
+
+      stagesData_5.forEach((stage, idx) => {
+        const angle = (idx * (2 * Math.PI)) / totalStages_5 - Math.PI / 2;
+        const x = 200 + 140 * Math.cos(angle);
+        const y = 200 + 140 * Math.sin(angle);
+        
+        const stageEl = document.getElementById('cycle-stage-5-' + idx);
+        if (stageEl) {
+          stageEl.style.left = x + 'px';
+          stageEl.style.top = y + 'px';
+          // See ConceptDiagram.js for why: centering + scale must both go through
+          // GSAP (xPercent/yPercent + scale), not a hand-written 'transform' string,
+          // or the element gets stuck at scale(0) - invisible - despite its opacity
+          // tween completing.
+          gsap.set(stageEl, { xPercent: -50, yPercent: -50, scale: 0 });
+
+          const revealStart = 0.5 + (idx * timeStep_5);
+
+          sceneTl.to(stageEl, {
+            scale: 1,
+            duration: 0.5,
+            ease: 'back.out(1.6)'
+          }, revealStart);
+
+          // Pulse active stage
+          sceneTl.to(stageEl, {
+            boxShadow: '0 0 20px ' + theme.accentColor,
+            duration: 0.4,
+            yoyo: true,
+            repeat: 1
+          }, revealStart + 0.4);
+        }
+      });
+
+      const orbitDot_5 = document.getElementById('cycle-orbit-dot-5');
+      if (orbitDot_5) {
+        const rotateObj = { angle: -90 };
+        sceneTl.to(rotateObj, {
+          angle: 270,
+          repeat: 10,
+          duration: 4,
+          ease: 'none',
+          onUpdate: () => {
+            const rad = (rotateObj.angle * Math.PI) / 180;
+            orbitDot_5.setAttribute('cx', 200 + 140 * Math.cos(rad));
+            orbitDot_5.setAttribute('cy', 200 + 140 * Math.sin(rad));
+          }
+        }, 1.2);
+      }
+    
+      mainTimeline.add(sceneTl, 44.64);
+    }
+    
+    // Pad mainTimeline to match computed totalDuration (narration padding)
+    mainTimeline.set({}, {}, 58.72267573696145);
+
+    window.__timelines = window.__timelines || {};
+    window.__timelines["root"] = mainTimeline;
+
+    // ════════════════════════════════════════════════════════════════════════
+    // HYPERFRAMES AUTHORITATIVE PLAYBACK ENGINE & IPC MESSAGING PROTOCOL
+    // ════════════════════════════════════════════════════════════════════════
+    window.HyperframesEngine = {
+      scenes: rawData,
+      totalDuration: 58.72267573696145,
+      currentSceneNo: null,
+      isPlaying: false,
+      isMuted: false,
+      speed: 1.0,
+      lastEmittedTime: -1,
+
+      init() {
+        console.log("🚀 [Hyperframes Runtime] Initializing authoritative playback engine...");
+        
+        // Main GSAP timeline starts paused - waiting for parent UI command or auto-start
+        mainTimeline.pause();
+        this.updateSceneVisibility(1);
+
+        // Frame ticker sync loop for time, scene, and audio updates
+        gsap.ticker.add(() => {
+          if (!this.isPlaying) return;
+          const curTime = mainTimeline.time();
+          this.syncStateForTime(curTime);
+
+          // Throttle CURRENT_TIME events to 10Hz to avoid postMessage flood
+          if (Math.abs(curTime - this.lastEmittedTime) >= 0.1) {
+            this.lastEmittedTime = curTime;
+            this.emit('CURRENT_TIME', { currentTime: curTime, duration: this.totalDuration });
+          }
+
+          if (curTime >= this.totalDuration) {
+            this.pause();
+            this.emit('TIMELINE_FINISHED');
+          }
+        });
+
+        // Notify parent window that Hyperframes Runtime is ready with full metadata
+        this.emit('READY', {
+          totalScenes: this.scenes.length,
+          duration: this.totalDuration,
+          lessonTitle: "Understanding Soil Erosion",
+          scenes: this.scenes.map(s => ({
+            scene_no: s.scene_no,
+            title: s.title || ("Scene " + s.scene_no),
+            teacher_script: s.teacher_script || "",
+            start: s.start,
+            duration: s.duration
+          }))
+        });
+
+        // Auto-start timeline playback by default
+        setTimeout(() => {
+          if (!this.isPlaying) {
+            console.log("▶ [Hyperframes Engine] Auto-starting video composition playback.");
+            this.play();
+          }
+        }, 150);
+      },
+
+      updateSceneVisibility(sceneNo) {
+        this.currentSceneNo = sceneNo;
+        this.scenes.forEach(s => {
+          const el = document.getElementById('scene-' + s.scene_no);
+          if (el) {
+            if (s.scene_no === sceneNo) {
+              el.style.display = 'block';
+              el.style.visibility = 'visible';
+              el.style.opacity = '1';
+            } else {
+              el.style.display = 'none';
+              el.style.visibility = 'hidden';
+              el.style.opacity = '0';
+            }
+          }
+        });
+      },
+
+      syncStateForTime(time) {
+        let activeScene = this.scenes[0];
+        for (let i = 0; i < this.scenes.length; i++) {
+          const s = this.scenes[i];
+          const nextS = this.scenes[i + 1];
+          if (time >= s.start && (!nextS || time < nextS.start)) {
+            activeScene = s;
+            break;
+          }
+        }
+
+        if (activeScene && activeScene.scene_no !== this.currentSceneNo) {
+          this.updateSceneVisibility(activeScene.scene_no);
+          const sceneOffset = time - activeScene.start;
+          this.syncAudioForScene(activeScene.scene_no, sceneOffset);
+
+          this.emit('SCENE_CHANGED', {
+            currentScene: activeScene.scene_no,
+            totalScenes: this.scenes.length,
+            title: activeScene.title,
+            script: activeScene.teacher_script
+          });
+          this.emit('SUBTITLE_CHANGED', { script: activeScene.teacher_script });
+        }
+      },
+
+      syncAudioForScene(sceneNo, offset) {
+        document.querySelectorAll('audio').forEach(a => a.pause());
+        const activeAudio = document.getElementById('audio-scene-' + sceneNo);
+        if (activeAudio) {
+          try {
+            activeAudio.currentTime = Math.max(0, offset);
+            activeAudio.muted = this.isMuted;
+            activeAudio.playbackRate = this.speed;
+            if (this.isPlaying) {
+              activeAudio.play().catch(e => {});
+            }
+          } catch(e) {}
+        }
+      },
+
+      play() {
+        this.isPlaying = true;
+        mainTimeline.play();
+        mainTimeline.timeScale(this.speed);
+        const curTime = mainTimeline.time();
+        this.syncStateForTime(curTime);
+
+        const activeAudio = document.getElementById('audio-scene-' + this.currentSceneNo);
+        if (activeAudio) {
+          try {
+            activeAudio.muted = this.isMuted;
+            activeAudio.playbackRate = this.speed;
+            activeAudio.play().catch(e => {});
+          } catch(e) {}
+        }
+        this.emit('PLAYING');
+      },
+
+      pause() {
+        this.isPlaying = false;
+        mainTimeline.pause();
+        document.querySelectorAll('audio').forEach(a => a.pause());
+        this.emit('PAUSED');
+      },
+
+      seek(targetTime) {
+        const clamped = Math.max(0, Math.min(targetTime, this.totalDuration));
+        mainTimeline.seek(clamped);
+        this.syncStateForTime(clamped);
+        this.emit('CURRENT_TIME', { currentTime: clamped, duration: this.totalDuration });
+      },
+
+      setSpeed(rate) {
+        this.speed = rate;
+        mainTimeline.timeScale(rate);
+        document.querySelectorAll('audio').forEach(a => a.playbackRate = rate);
+      },
+
+      setMute(isMuted) {
+        this.isMuted = isMuted;
+        document.querySelectorAll('audio').forEach(a => a.muted = isMuted);
+      },
+
+      jumpToScene(sceneNo) {
+        const s = this.scenes.find(sc => sc.scene_no === sceneNo);
+        if (s) {
+          this.seek(s.start);
+          if (this.isPlaying) this.play();
+        }
+      },
+
+      emit(type, payload = {}) {
+        try {
+          window.parent.postMessage({ source: 'HYPERFRAMES_ENGINE', type, ...payload }, '*');
+        } catch(e) {
+          console.error("Failed to emit postMessage from Hyperframes Engine:", e);
+        }
+      }
+    };
+
+    // Incoming Command Listener from Parent UI
+    window.addEventListener('message', (e) => {
+      const data = e.data;
+      if (!data || data.target !== 'HYPERFRAMES_ENGINE') return;
+      console.log("📥 [Hyperframes Engine Command Received]:", data.command, data);
+      
+      switch(data.command) {
+        case 'PLAY': window.HyperframesEngine.play(); break;
+        case 'PAUSE': window.HyperframesEngine.pause(); break;
+        case 'SEEK': window.HyperframesEngine.seek(data.targetTime); break;
+        case 'RESTART': window.HyperframesEngine.seek(0); window.HyperframesEngine.play(); break;
+        case 'SET_PLAYBACK_RATE': window.HyperframesEngine.setSpeed(data.rate); break;
+        case 'TOGGLE_MUTE': window.HyperframesEngine.setMute(data.isMuted); break;
+        case 'JUMP_SCENE': window.HyperframesEngine.jumpToScene(data.sceneNo); break;
+      }
+    });
+
+    // Auto-initialize when DOM is ready
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      window.HyperframesEngine.init();
+    } else {
+      window.addEventListener('DOMContentLoaded', () => window.HyperframesEngine.init());
+    }
+  </script>
+</body>
+</html>

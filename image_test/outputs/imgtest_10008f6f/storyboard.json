@@ -1,0 +1,132 @@
+[
+  {
+    "scene_no": 1,
+    "purpose": "Introduce the topic of decomposition reactions, specifically focusing on ferrous sulphate crystals.",
+    "beat_shape": "opener",
+    "template_id": "title_slide",
+    "template_selection_reasoning": "The title slide is essential for setting the stage for the lesson, providing a clear introduction to the topic.",
+    "camera": {
+      "zoom": 1.1,
+      "pan_x": 0,
+      "pan_y": 0,
+      "target_node": "main_concept"
+    },
+    "teacher_script": "Today, we will explore the fascinating process of heating ferrous sulphate crystals. This experiment will help us understand decomposition reactions and their products.",
+    "template_data": {
+      "title": "Decomposition of Ferrous Sulphate Crystals",
+      "subtitle": "Understanding Thermal Decomposition"
+    },
+    "audio_url": ""
+  },
+  {
+    "scene_no": 2,
+    "purpose": "Explain the process of heating ferrous sulphate crystals and the expected observations.",
+    "beat_shape": "sequence",
+    "template_id": "image_scene",
+    "template_selection_reasoning": "Using a real image of the experiment allows students to visualize the setup and process, enhancing their understanding.",
+    "camera": {
+      "zoom": 1.1,
+      "pan_x": 0,
+      "pan_y": 0,
+      "target_node": "main_concept"
+    },
+    "teacher_script": "In this experiment, we take about 2 grams of ferrous sulphate crystals in a dry boiling tube. As we heat the tube, we will observe a change in color and the release of gases.",
+    "template_data": {
+      "image_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/book-processing/Class10_science/chapters/jesc101/05_diagrams/images/p8_vec1_region.png",
+      "annotations": [
+        {
+          "x": 10,
+          "y": 20,
+          "text": "Boiling Tube"
+        },
+        {
+          "x": 30,
+          "y": 40,
+          "text": "Ferrous Sulphate Crystals"
+        },
+        {
+          "x": 50,
+          "y": 60,
+          "text": "Burner"
+        }
+      ]
+    },
+    "audio_url": ""
+  },
+  {
+    "scene_no": 3,
+    "purpose": "Detail the chemical reaction that occurs when ferrous sulphate is heated.",
+    "beat_shape": "hierarchy",
+    "template_id": "concept_diagram",
+    "template_selection_reasoning": "A concept diagram effectively illustrates the breakdown of ferrous sulphate into its products, helping students visualize the reaction.",
+    "camera": {
+      "zoom": 1.1,
+      "pan_x": 0,
+      "pan_y": 0,
+      "target_node": "main_concept"
+    },
+    "teacher_script": "When heated, ferrous sulphate decomposes into ferric oxide, sulfur dioxide, and sulfur trioxide. This reaction is a classic example of thermal decomposition.",
+    "template_data": {
+      "title": "Decomposition of Ferrous Sulphate",
+      "central_node": {
+        "text": "Ferrous Sulphate (FeSO4)",
+        "icon": "chemical"
+      },
+      "leaf_nodes": [
+        {
+          "text": "Ferric Oxide (Fe2O3)",
+          "icon": "chemical"
+        },
+        {
+          "text": "Sulfur Dioxide (SO2)",
+          "icon": "gas"
+        },
+        {
+          "text": "Sulfur Trioxide (SO3)",
+          "icon": "gas"
+        }
+      ]
+    },
+    "audio_url": ""
+  },
+  {
+    "scene_no": 4,
+    "purpose": "Summarize the key points of the lesson and reinforce the learning objectives.",
+    "beat_shape": "overlap",
+    "template_id": "venn_diagram",
+    "template_selection_reasoning": "The before-after slider effectively illustrates the transformation of ferrous sulphate crystals before and after heating, reinforcing the concept of decomposition.",
+    "camera": {
+      "zoom": 1.1,
+      "pan_x": 0,
+      "pan_y": 0,
+      "target_node": "main_concept"
+    },
+    "teacher_script": "To conclude, we have observed how ferrous sulphate crystals change upon heating, demonstrating a decomposition reaction. Remember, this process is crucial in various industrial applications.",
+    "template_data": {
+      "title": "Before and After Heating",
+      "before": {
+        "label": "Before Heating",
+        "bullets": [
+          {
+            "text": "Green Ferrous Sulphate Crystals",
+            "icon": "crystal"
+          }
+        ]
+      },
+      "after": {
+        "label": "After Heating",
+        "bullets": [
+          {
+            "text": "Brown Ferric Oxide",
+            "icon": "chemical"
+          },
+          {
+            "text": "Gases Released (SO2, SO3)",
+            "icon": "gas"
+          }
+        ]
+      }
+    },
+    "audio_url": ""
+  }
+]

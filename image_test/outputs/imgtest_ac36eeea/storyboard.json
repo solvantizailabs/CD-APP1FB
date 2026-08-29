@@ -1,0 +1,138 @@
+[
+  {
+    "scene_no": 1,
+    "purpose": "Introduce the topic of thermal decomposition reactions, specifically focusing on ferrous sulphate.",
+    "beat_shape": "opener",
+    "template_id": "title_slide",
+    "template_selection_reasoning": "The title slide is essential for setting the stage for the lesson, providing a clear introduction to the topic.",
+    "camera": {
+      "zoom": 1.1,
+      "pan_x": 0,
+      "pan_y": 0,
+      "target_node": "main_concept"
+    },
+    "teacher_script": "Today, we will explore the thermal decomposition of ferrous sulphate crystals. We will observe the changes that occur when these crystals are heated.",
+    "template_data": {
+      "title": "Decomposition of Ferrous Sulphate Crystals",
+      "subtitle": "Understanding Thermal Decomposition"
+    },
+    "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_ac36eeea/scene_1.wav"
+  },
+  {
+    "scene_no": 2,
+    "purpose": "Explain the process of heating ferrous sulphate crystals and the expected observations.",
+    "beat_shape": "sequence",
+    "template_id": "image_scene",
+    "template_selection_reasoning": "Using a real image of the experiment provides a clear visual representation of the setup and process, enhancing understanding.",
+    "camera": {
+      "zoom": 1.1,
+      "pan_x": 0,
+      "pan_y": 0,
+      "target_node": "main_concept"
+    },
+    "teacher_script": "In this experiment, we take about 2 grams of ferrous sulphate crystals in a dry boiling tube. As we heat the boiling tube over a flame, we will observe a color change in the crystals.",
+    "template_data": {
+      "image_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/book-processing/Class10_science/chapters/jesc101/05_diagrams/images/p8_vec1_region.png",
+      "annotations": [
+        {
+          "x": 10,
+          "y": 20,
+          "text": "Boiling Tube"
+        },
+        {
+          "x": 30,
+          "y": 50,
+          "text": "Ferrous Sulphate Crystals"
+        },
+        {
+          "x": 50,
+          "y": 70,
+          "text": "Burner"
+        }
+      ]
+    },
+    "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_ac36eeea/scene_2.wav"
+  },
+  {
+    "scene_no": 3,
+    "purpose": "Describe the chemical reaction that occurs during the heating of ferrous sulphate.",
+    "beat_shape": "hierarchy",
+    "template_id": "concept_diagram",
+    "template_selection_reasoning": "A concept diagram effectively illustrates the breakdown of ferrous sulphate into its products, helping students visualize the decomposition reaction.",
+    "camera": {
+      "zoom": 1.1,
+      "pan_x": 0,
+      "pan_y": 0,
+      "target_node": "main_concept"
+    },
+    "teacher_script": "When heated, ferrous sulphate decomposes into ferric oxide, sulfur dioxide, and sulfur trioxide. This is a decomposition reaction where a single reactant breaks down into simpler products.",
+    "template_data": {
+      "title": "Decomposition of Ferrous Sulphate",
+      "central_node": {
+        "text": "Ferrous Sulphate (FeSO4)",
+        "icon": "chemical"
+      },
+      "leaf_nodes": [
+        {
+          "text": "Ferric Oxide (Fe2O3)",
+          "icon": "chemical"
+        },
+        {
+          "text": "Sulfur Dioxide (SO2)",
+          "icon": "gas"
+        },
+        {
+          "text": "Sulfur Trioxide (SO3)",
+          "icon": "gas"
+        }
+      ]
+    },
+    "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_ac36eeea/scene_3.wav"
+  },
+  {
+    "scene_no": 4,
+    "purpose": "Summarize the key observations and concepts learned about the decomposition of ferrous sulphate.",
+    "beat_shape": "hierarchy",
+    "template_id": "taxonomy_tree",
+    "template_selection_reasoning": "A taxonomy tree is suitable for summarizing the key concepts and products of the decomposition reaction, providing a clear overview.",
+    "camera": {
+      "zoom": 1.1,
+      "pan_x": 0,
+      "pan_y": 0,
+      "target_node": "main_concept"
+    },
+    "teacher_script": "In summary, the thermal decomposition of ferrous sulphate results in a color change and the production of ferric oxide, sulfur dioxide, and sulfur trioxide. Understanding these reactions is crucial in various industrial applications.",
+    "template_data": {
+      "title": "Summary of Decomposition Reaction",
+      "root": {
+        "label": "Decomposition of Ferrous Sulphate",
+        "icon": "chemical",
+        "children": [
+          {
+            "label": "Color Change",
+            "icon": "color"
+          },
+          {
+            "label": "Products",
+            "icon": "chemical",
+            "children": [
+              {
+                "label": "Ferric Oxide (Fe2O3)",
+                "icon": "chemical"
+              },
+              {
+                "label": "Sulfur Dioxide (SO2)",
+                "icon": "gas"
+              },
+              {
+                "label": "Sulfur Trioxide (SO3)",
+                "icon": "gas"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_ac36eeea/scene_4.wav"
+  }
+]

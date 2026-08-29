@@ -952,20 +952,30 @@ def load_registry() -> dict:
     return _cache
 
 
-def get_active_template_ids() -> list:
-    """Template ids the LLM is allowed to choose from (status == 'active')."""
+def get_active_template_ids(extra_ids: list = None) -> list:
+    """Template ids the LLM is allowed to choose from (status == 'active').
+
+    `extra_ids`: template ids to include regardless of their registry
+    `status` (e.g. a banned-but-code-complete template like 'image_scene'
+    being exercised by an isolated test harness). None (the default, every
+    production call) preserves today's exact behavior - this parameter only
+    exists so a test-only caller can widen the choice set for its own
+    prompt/repair-pass calls without editing template-registry.json's
+    `status` field, which would affect production immediately since the
+    registry is the single source of truth for both."""
     registry = load_registry()
-    return [tid for tid, meta in registry.items() if meta.get("status") == "active"]
+    ids = [tid for tid, meta in registry.items() if meta.get("status") == "active"]
+    for tid in (extra_ids or []):
+        if tid in registry and tid not in ids:
+            ids.append(tid)
+    return ids
 
 
-def get_constraint_map() -> dict:
-    """{template_id: [constraint_strings]} for active templates only."""
+def get_constraint_map(extra_ids: list = None) -> dict:
+    """{template_id: [constraint_strings]} for active templates (+ extra_ids)."""
     registry = load_registry()
-    return {
-        tid: meta.get("constraints", [])
-        for tid, meta in registry.items()
-        if meta.get("status") == "active"
-    }
+    valid = get_active_template_ids(extra_ids)
+    return {tid: registry[tid].get("constraints", []) for tid in valid if tid in registry}
 
 
 # Canonical information-shape vocabulary the LLM is asked to classify each
@@ -980,24 +990,21 @@ SHAPE_VOCAB = [
 ]
 
 
-def get_shape_map() -> dict:
-    """{template_id: [shape_strings]} for active templates only."""
+def get_shape_map(extra_ids: list = None) -> dict:
+    """{template_id: [shape_strings]} for active templates (+ extra_ids)."""
     registry = load_registry()
-    return {
-        tid: meta.get("shapes", [])
-        for tid, meta in registry.items()
-        if meta.get("status") == "active"
-    }
+    valid = get_active_template_ids(extra_ids)
+    return {tid: registry[tid].get("shapes", []) for tid in valid if tid in registry}
 
 
-def build_shape_guidance_text() -> str:
+def build_shape_guidance_text(extra_ids: list = None) -> str:
     """
     Instructs the LLM to classify each scene's underlying information-shape
     BEFORE choosing a template_id, and shows which templates fit which shape
     - forcing the "what kind of idea is this" reasoning step to happen
     in-line rather than being skipped straight to a template pick.
     """
-    shape_map = get_shape_map()
+    shape_map = get_shape_map(extra_ids)
     by_shape = {}
     for tid, shapes in shape_map.items():
         for s in shapes:
@@ -1019,9 +1026,9 @@ def build_shape_guidance_text() -> str:
     return "\n".join(lines)
 
 
-def build_template_choice_line() -> str:
+def build_template_choice_line(extra_ids: list = None) -> str:
     """e.g. "'title_slide', 'concept_diagram', ..." for embedding in the prompt."""
-    return ", ".join(f"'{tid}'" for tid in get_active_template_ids())
+    return ", ".join(f"'{tid}'" for tid in get_active_template_ids(extra_ids))
 
 
 def build_icon_guidance_text(subject: str = None) -> str:
@@ -1060,22 +1067,22 @@ def build_icon_guidance_text(subject: str = None) -> str:
     )
 
 
-def build_template_data_hints_block(indent: str = "        ") -> str:
+def build_template_data_hints_block(indent: str = "        ", extra_ids: list = None) -> str:
     """Multi-line '// For <id>: <hint>' comment block for the prompt's template_data example."""
     registry = load_registry()
     lines = []
-    for tid in get_active_template_ids():
+    for tid in get_active_template_ids(extra_ids):
         hint = registry[tid].get("template_data_hint", "")
         lines.append(f"{indent}// For '{tid}': {hint}")
     return "\n".join(lines)
 
 
-def build_selection_rules_text() -> str:
+def build_selection_rules_text(extra_ids: list = None) -> str:
     """Numbered prose rules derived from each active template's best_for + constraints."""
     registry = load_registry()
     lines = []
     n = 1
-    for tid in get_active_template_ids():
+    for tid in get_active_template_ids(extra_ids):
         meta = registry[tid]
         rule = f"{n}. **{tid}**: {meta.get('best_for', '')}."
         constraints = meta.get("constraints", [])
@@ -1089,7 +1096,10 @@ def build_selection_rules_text() -> str:
         lines.append(rule)
         n += 1
 
-    banned = [tid for tid, meta in registry.items() if meta.get("status") == "banned"]
+    # A template listed in extra_ids is deliberately being offered despite its
+    # registry status (e.g. a test harness exercising a banned-but-code-complete
+    # template) - it must not also appear in its own "do not use" list below.
+    banned = [tid for tid, meta in registry.items() if meta.get("status") == "banned" and tid not in (extra_ids or [])]
     if banned:
         banned_list = ", ".join(f"`{tid}`" for tid in banned)
         lines.append(f"{n}. **Do NOT use** these template ids under any circumstances: {banned_list}.")
@@ -1157,6 +1167,30 @@ def _extract_ordered_items(data: dict) -> list:
                     items.append({"label": str(label), "description": str(desc)})
         if items:
             return items
+
+    # column_comparison shape: {left_col: {header, bullets: [{text}]}, right_col: {...}}
+    # Confirmed live gap (2026-08-26): a column_comparison scene force-swapped
+    # to math_derivation on a beat_shape mismatch kept its left_col/right_col
+    # data untouched (not recognized by any case above), so math_derivation
+    # got no formula/steps to render at all - a genuinely blank scene, not
+    # just an imperfect one. Each column's header becomes its own item
+    # (a section label), followed by its bullets in order.
+    left_col, right_col = data.get("left_col"), data.get("right_col")
+    if isinstance(left_col, dict) or isinstance(right_col, dict):
+        items = []
+        for col in (left_col, right_col):
+            if not isinstance(col, dict):
+                continue
+            header = col.get("header")
+            if header:
+                items.append({"label": str(header), "description": ""})
+            for b in (col.get("bullets") or []):
+                text = b.get("text", "") if isinstance(b, dict) else (b if isinstance(b, str) else "")
+                if text:
+                    items.append({"label": str(text), "description": ""})
+        if items:
+            return items
+
     return []
 
 
@@ -1258,17 +1292,21 @@ def _fix_template_id_data_mismatch(clip: dict, valid: list, shape_map: dict, log
         clip["beat_shape"] = new_shapes[0]
 
 
-def repair_scene_templates(clips: list, log=None) -> list:
+def repair_scene_templates(clips: list, log=None, extra_ids: list = None) -> list:
     """
     Enforces registry-derived constraints on an LLM-produced scene list in place:
     scene-1-only / last-scene-only placement, max_uses caps, and no consecutive
     duplicate template_ids. Mutates and returns `clips` (each a dict with a
     'template_id' key). `log` is an optional callable(str) for audit output.
+    `extra_ids` widens the valid set the same way get_active_template_ids()
+    does - without it, a scene using a banned-but-offered template (e.g. a
+    test harness's 'image_scene') would be treated as invalid and swapped
+    away by this same repair pass.
     """
     log = log or (lambda msg: None)
-    valid = get_active_template_ids()
-    constraints = get_constraint_map()
-    shape_map = get_shape_map()
+    valid = get_active_template_ids(extra_ids)
+    constraints = get_constraint_map(extra_ids)
+    shape_map = get_shape_map(extra_ids)
     use_counts = {}
     last_idx = len(clips) - 1
     shape_mismatch_count = 0
@@ -1314,8 +1352,15 @@ def repair_scene_templates(clips: list, log=None) -> list:
             # template that is still the wrong SHAPE for its content - e.g. a
             # comparison beat that picked cycle_template - which the checks
             # above can never see since they only look at placement/uniqueness.
+            # shape_map.get(tid) must be non-empty before this check means anything -
+            # a template with NO declared shapes (e.g. 'image_scene', which never
+            # needed a 'shapes' entry while banned) would otherwise match zero
+            # shapes by definition and get swapped away regardless of its actual
+            # beat_shape. Every currently-active template does declare shapes, so
+            # this only ever changes behavior for a shapeless template - never for
+            # today's production template set.
             beat_shape = clip.get("beat_shape")
-            if beat_shape and beat_shape in SHAPE_VOCAB and beat_shape not in shape_map.get(tid, []):
+            if beat_shape and beat_shape in SHAPE_VOCAB and shape_map.get(tid) and beat_shape not in shape_map.get(tid, []):
                 if _template_data_matches_native_shape(tid, clip.get("template_data") or {}):
                     # The scene's own content is unambiguous evidence of tid's
                     # real shape - the LLM mislabeled beat_shape, not the

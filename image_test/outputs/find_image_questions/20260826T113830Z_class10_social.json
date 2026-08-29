@@ -1,0 +1,19 @@
+{
+  "class_name": "10",
+  "subject": "social",
+  "questions": [
+    {
+      "question": "\"What are the major soil types found in India?",
+      "qualifies": true,
+      "confidence_tier": "HIGH",
+      "qualifying_diagrams": [
+        {
+          "image_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/book-processing/Class10_social/chapters/jess101/05_diagrams/images/p8_4_Im2.jpg",
+          "caption": "Shows a map of India illustrating major soil types, including Alluvial, Red and Yellow, Black, Laterite, and regions classified as Forest and Mountainous.",
+          "topic": "Classification of Soils",
+          "score": 8.975576400756836
+        }
+      ]
+    }
+  ]
+}

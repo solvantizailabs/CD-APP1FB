@@ -1,0 +1,67 @@
+{
+  "_comment": "Curated, hand-verified illustrated_scene layouts for common curriculum concepts. Each entry's 'elements' array uses the exact same schema the LLM is asked to invent freehand for illustrated_scene (type/path_data/cx/cy/r/x1/y1/x2/y2/x/y/width/height/stroke_color/fill/dash_array/label/position) - so no renderer changes are needed, these just get swapped in for template_data.elements server-side (see template_registry.py match_diagram_for_scene / apply_curated_diagram) whenever a scene's purpose/title/teacher_script matches a diagram's keywords well enough. This exists because LLMs are unreliable at inventing correct-looking anatomy/process geometry from raw coordinates on the fly - the same reason icons are a curated library instead of LLM-drawn art, applied one level up to whole scenes.",
+  "diagrams": {
+    "respiratory_system": {
+      "keywords": ["respirat", "lungs", "lung", "breath", "breathing", "trachea", "alveoli", "bronch", "inhale", "exhale", "windpipe", "diaphragm"],
+      "elements": [
+        { "type": "circle", "cx": 610, "cy": 130, "r": 10, "stroke_color": "#94a3b8", "fill": "rgba(148,163,184,0.3)" },
+        { "type": "circle", "cx": 670, "cy": 130, "r": 10, "stroke_color": "#94a3b8", "fill": "rgba(148,163,184,0.3)", "label": "Nostrils", "position": { "x": 720, "y": 125 } },
+        { "type": "path", "path_data": "M 640 90 L 640 340", "stroke_color": "#3b82f6", "stroke_width": 3, "dash_array": "8 6", "label": "Inhaled Air (O2)", "position": { "x": 780, "y": 200 } },
+        { "type": "rect", "x": 595, "y": 140, "width": 90, "height": 200, "stroke_color": "#94a3b8", "fill": "rgba(148,163,184,0.15)", "label": "Trachea (Windpipe)", "position": { "x": 300, "y": 240 } },
+        { "type": "line", "x1": 595, "y1": 180, "x2": 685, "y2": 180, "stroke_color": "#94a3b8", "stroke_width": 1.5 },
+        { "type": "line", "x1": 595, "y1": 220, "x2": 685, "y2": 220, "stroke_color": "#94a3b8", "stroke_width": 1.5 },
+        { "type": "line", "x1": 595, "y1": 260, "x2": 685, "y2": 260, "stroke_color": "#94a3b8", "stroke_width": 1.5 },
+        { "type": "line", "x1": 595, "y1": 300, "x2": 685, "y2": 300, "stroke_color": "#94a3b8", "stroke_width": 1.5 },
+        { "type": "path", "path_data": "M 620 340 Q 520 380 460 420", "stroke_color": "#94a3b8", "stroke_width": 10, "fill": "none" },
+        { "type": "path", "path_data": "M 660 340 Q 760 380 820 420", "stroke_color": "#94a3b8", "stroke_width": 10, "fill": "none", "label": "Bronchi", "position": { "x": 900, "y": 380 } },
+        { "type": "path", "path_data": "M 460 380 C 380 380 320 460 330 540 C 340 610 420 640 480 610 C 520 590 520 480 500 420 C 490 395 480 385 460 380 Z", "stroke_color": "#ff6347", "stroke_width": 2, "fill": "rgba(255,99,71,0.35)" },
+        { "type": "path", "path_data": "M 820 380 C 900 380 960 460 950 540 C 940 610 860 640 800 610 C 760 590 760 480 780 420 C 790 395 800 385 820 380 Z", "stroke_color": "#ff6347", "stroke_width": 2, "fill": "rgba(255,99,71,0.35)", "label": "Lungs (Left & Right)", "position": { "x": 1000, "y": 500 } },
+        { "type": "circle", "cx": 410, "cy": 450, "r": 14, "stroke_color": "#32cd32", "fill": "rgba(50,205,50,0.5)" },
+        { "type": "circle", "cx": 432, "cy": 444, "r": 12, "stroke_color": "#32cd32", "fill": "rgba(50,205,50,0.5)" },
+        { "type": "circle", "cx": 414, "cy": 472, "r": 11, "stroke_color": "#32cd32", "fill": "rgba(50,205,50,0.5)" },
+        { "type": "circle", "cx": 438, "cy": 468, "r": 13, "stroke_color": "#32cd32", "fill": "rgba(50,205,50,0.5)", "label": "Alveoli (Gas Exchange)", "position": { "x": 250, "y": 500 } },
+        { "type": "circle", "cx": 870, "cy": 450, "r": 14, "stroke_color": "#32cd32", "fill": "rgba(50,205,50,0.5)" },
+        { "type": "circle", "cx": 848, "cy": 444, "r": 12, "stroke_color": "#32cd32", "fill": "rgba(50,205,50,0.5)" },
+        { "type": "circle", "cx": 866, "cy": 472, "r": 11, "stroke_color": "#32cd32", "fill": "rgba(50,205,50,0.5)" },
+        { "type": "circle", "cx": 842, "cy": 468, "r": 13, "stroke_color": "#32cd32", "fill": "rgba(50,205,50,0.5)" },
+        { "type": "path", "path_data": "M 260 600 Q 640 660 1020 600", "stroke_color": "#f59e0b", "stroke_width": 4, "fill": "none", "label": "Diaphragm", "position": { "x": 640, "y": 640 } }
+      ]
+    },
+    "water_cycle": {
+      "keywords": ["water cycle", "evaporat", "condensat", "precipitat", "rain", "cloud form", "hydrologic"],
+      "elements": [
+        { "type": "circle", "cx": 1050, "cy": 140, "r": 70, "stroke_color": "#f59e0b", "stroke_width": 2, "fill": "rgba(245,158,11,0.3)", "label": "Sun", "position": { "x": 1050, "y": 230 } },
+        { "type": "path", "path_data": "M 100 620 Q 300 580 500 620 Q 700 660 900 620 Q 1050 590 1180 620 L 1180 700 L 100 700 Z", "stroke_color": "#38bdf8", "stroke_width": 2, "fill": "rgba(56,189,248,0.3)", "label": "Ocean / Sea", "position": { "x": 180, "y": 660 } },
+        { "type": "path", "path_data": "M 480 220 C 470 190 510 165 545 175 C 555 145 610 140 630 170 C 665 160 700 185 690 220 C 715 225 720 260 695 270 L 490 270 C 465 265 465 228 480 220 Z", "stroke_color": "#e2e8f0", "stroke_width": 2, "fill": "rgba(226,232,240,0.7)", "label": "Cloud (Condensation)", "position": { "x": 780, "y": 220 } },
+        { "type": "path", "path_data": "M 350 600 Q 380 400 500 280", "stroke_color": "#38bdf8", "stroke_width": 3, "dash_array": "6 5", "label": "Evaporation", "position": { "x": 220, "y": 420 } },
+        { "type": "path", "path_data": "M 650 600 Q 660 420 615 285", "stroke_color": "#38bdf8", "stroke_width": 3, "dash_array": "6 5" },
+        { "type": "path", "path_data": "M 900 600 Q 850 420 730 280", "stroke_color": "#38bdf8", "stroke_width": 3, "dash_array": "6 5" },
+        { "type": "path", "path_data": "M 540 300 L 528 380", "stroke_color": "#60a5fa", "stroke_width": 3, "dash_array": "4 3", "label": "Precipitation (Rain)", "position": { "x": 400, "y": 400 } },
+        { "type": "path", "path_data": "M 590 300 L 578 380", "stroke_color": "#60a5fa", "stroke_width": 3, "dash_array": "4 3" },
+        { "type": "path", "path_data": "M 640 300 L 628 380", "stroke_color": "#60a5fa", "stroke_width": 3, "dash_array": "4 3" }
+      ]
+    },
+    "digestive_system": {
+      "keywords": ["digest", "stomach", "intestine", "esophagus", "food pipe", "peristalsis", "nutrient absorption"],
+      "elements": [
+        { "type": "circle", "cx": 640, "cy": 95, "r": 28, "stroke_color": "#f59e0b", "stroke_width": 2, "fill": "rgba(245,158,11,0.3)", "label": "Mouth", "position": { "x": 740, "y": 90 } },
+        { "type": "rect", "x": 605, "y": 125, "width": 70, "height": 175, "stroke_color": "#94a3b8", "fill": "rgba(148,163,184,0.15)", "label": "Esophagus (Food Pipe)", "position": { "x": 460, "y": 210 } },
+        { "type": "line", "x1": 605, "y1": 160, "x2": 675, "y2": 160, "stroke_color": "#94a3b8", "stroke_width": 1.5 },
+        { "type": "line", "x1": 605, "y1": 195, "x2": 675, "y2": 195, "stroke_color": "#94a3b8", "stroke_width": 1.5 },
+        { "type": "line", "x1": 605, "y1": 230, "x2": 675, "y2": 230, "stroke_color": "#94a3b8", "stroke_width": 1.5 },
+        { "type": "path", "path_data": "M 640 65 L 640 460", "stroke_color": "#3b82f6", "stroke_width": 3, "dash_array": "8 6", "label": "Food Movement (Peristalsis)", "position": { "x": 860, "y": 260 } },
+        { "type": "path", "path_data": "M 560 300 C 500 320 470 390 505 450 C 540 505 650 515 700 465 C 735 425 710 345 650 305 C 620 288 590 288 560 300 Z", "stroke_color": "#ff6347", "stroke_width": 2, "fill": "rgba(255,99,71,0.35)", "label": "Stomach", "position": { "x": 810, "y": 460 } },
+        { "type": "circle", "cx": 590, "cy": 370, "r": 9, "stroke_color": "#facc15", "fill": "rgba(250,204,21,0.5)", "label": "Gastric Juices", "position": { "x": 470, "y": 400 } },
+        { "type": "circle", "cx": 615, "cy": 395, "r": 8, "stroke_color": "#facc15", "fill": "rgba(250,204,21,0.5)" },
+        { "type": "circle", "cx": 645, "cy": 375, "r": 7, "stroke_color": "#facc15", "fill": "rgba(250,204,21,0.5)" },
+        { "type": "path", "path_data": "M 320 500 Q 380 460 440 500 Q 500 540 560 500 Q 620 460 680 500 Q 700 560 640 590 Q 560 620 480 590 Q 400 560 340 590", "stroke_color": "#f97316", "stroke_width": 16, "fill": "none", "label": "Small Intestine (Nutrient Absorption)", "position": { "x": 480, "y": 650 } },
+        { "type": "circle", "cx": 440, "cy": 500, "r": 7, "stroke_color": "#22c55e", "fill": "rgba(34,197,94,0.5)" },
+        { "type": "circle", "cx": 560, "cy": 500, "r": 7, "stroke_color": "#22c55e", "fill": "rgba(34,197,94,0.5)" },
+        { "type": "circle", "cx": 480, "cy": 590, "r": 7, "stroke_color": "#22c55e", "fill": "rgba(34,197,94,0.5)", "label": "Villi (Absorption)", "position": { "x": 330, "y": 620 } },
+        { "type": "path", "path_data": "M 250 460 L 250 650 Q 250 672 272 672 L 950 672 Q 972 672 972 650 L 972 460", "stroke_color": "#22c55e", "stroke_width": 18, "fill": "none", "label": "Large Intestine (Water Absorption)", "position": { "x": 1080, "y": 500 } },
+        { "type": "path", "path_data": "M 972 460 L 972 630", "stroke_color": "#fbbf24", "stroke_width": 3, "dash_array": "6 5", "label": "Waste Movement", "position": { "x": 1080, "y": 550 } },
+        { "type": "rect", "x": 950, "y": 630, "width": 44, "height": 40, "rx": 10, "stroke_color": "#94a3b8", "fill": "rgba(148,163,184,0.3)", "label": "Rectum / Anus", "position": { "x": 1080, "y": 660 } }
+      ]
+    }
+  }
+}

@@ -1,0 +1,155 @@
+{
+  "_comment": "Single source of truth for HyperFrames scene templates. Consumed by both the Node engine (hyperframes_engine/) via require() and the Python backend (backend/app/services/visual_learning/) via json.load(). Add/remove/edit a template here instead of editing prompt files or hardcoded lists directly - every consumer derives its behavior from this file. 'status' controls whether the LLM is offered the template: active = offered, banned = deliberately excluded (see 'banned_reason'), fallback_only = never offered to the LLM but used internally as an engine fallback, experimental = offered but flagged as unproven.",
+  "templates": {
+    "title_slide": {
+      "best_for": "Lesson opener only (scene 1 always)",
+      "template_data_hint": "{\"title\": \"...\", \"subtitle\": \"...\"}",
+      "constraints": [
+        "scene_1_only"
+      ],
+      "shapes": [
+        "opener"
+      ],
+      "status": "active"
+    },
+    "concept_diagram": {
+      "best_for": "Central concept with branches/leaves",
+      "template_data_hint": "{\"title\": \"...\", \"central_node\": {\"text\": \"...\", \"icon\": \"...\"}, \"leaf_nodes\": [{\"text\": \"...\", \"icon\": \"...\"}]}",
+      "constraints": [
+        "max_uses:1"
+      ],
+      "shapes": [
+        "hierarchy"
+      ],
+      "status": "active"
+    },
+    "cycle_template": {
+      "best_for": "Circular/repeating processes",
+      "template_data_hint": "{\"title\": \"...\", \"stages\": [{\"label\": \"...\", \"icon\": \"...\"}]}",
+      "constraints": [],
+      "shapes": [
+        "cyclical",
+        "sequence"
+      ],
+      "status": "active"
+    },
+    "math_derivation": {
+      "best_for": "Step-by-step equations, formulas, derivations",
+      "template_data_hint": "{\"title\": \"...\", \"formula\": \"...\", \"steps\": [\"step1\", \"step2\"]}",
+      "constraints": [],
+      "shapes": [
+        "sequence",
+        "quantitative"
+      ],
+      "status": "active"
+    },
+    "column_comparison": {
+      "best_for": "Comparing two items, pros/cons, side-by-side contrast",
+      "template_data_hint": "{\"title\": \"...\", \"left_col\": {\"header\": \"...\", \"bullets\": [{\"text\": \"...\", \"icon\": \"...\"}]}, \"right_col\": {\"header\": \"...\", \"bullets\": [{\"text\": \"...\", \"icon\": \"...\"}]}}",
+      "constraints": [],
+      "shapes": [
+        "comparison"
+      ],
+      "status": "active"
+    },
+    "horizontal_timeline": {
+      "best_for": "Sequences, ordered steps, historical events (prefer this over cycle_template for social-studies chronology/timeline questions)",
+      "template_data_hint": "{\"title\": \"...\", \"events\": [{\"label\": \"...\", \"description\": \"...\"}]}",
+      "constraints": [],
+      "shapes": [
+        "sequence"
+      ],
+      "status": "active"
+    },
+    "database_grid": {
+      "best_for": "Structured tabular data, elements, properties, numeric tables",
+      "template_data_hint": "{\"title\": \"...\", \"headers\": [], \"rows\": [[]]}",
+      "constraints": [],
+      "shapes": [
+        "quantitative"
+      ],
+      "status": "active"
+    },
+    "venn_diagram": {
+      "best_for": "Overlap/intersection of two concepts",
+      "template_data_hint": "{\"left_title\": \"...\", \"right_title\": \"...\", \"left\": [{\"text\": \"...\", \"icon\": \"...\"}], \"right\": [{\"text\": \"...\", \"icon\": \"...\"}], \"intersection\": [{\"text\": \"...\", \"icon\": \"...\"}]}",
+      "constraints": [],
+      "shapes": [
+        "comparison",
+        "overlap"
+      ],
+      "status": "active"
+    },
+    "taxonomy_tree": {
+      "best_for": "Classification, hierarchy, family/branch trees",
+      "template_data_hint": "{\"title\": \"...\", \"root\": {\"label\": \"...\", \"icon\": \"...\", \"children\": [{\"label\": \"...\", \"icon\": \"...\", \"children\": []}]}}",
+      "constraints": [],
+      "shapes": [
+        "hierarchy"
+      ],
+      "status": "active"
+    },
+    "cartesian_grid": {
+      "best_for": "Graphs, functions, coordinate geometry",
+      "template_data_hint": "{\"title\": \"...\", \"equation_label\": \"ax^2+bx+c=0\", \"points\": [{\"x\": -2, \"y\": 4, \"label\": \"Vertex\"}], \"lines\": [], \"svg_elements\": [{\"type\": \"path\", \"d\": \"M 60 300 Q 340 60 620 300\", \"stroke\": \"#3b82f6\", \"stroke_width\": 4}]}. The plot area is a FIXED 680x380 SVG viewBox (x: 0-680, y: 0-380, origin top-left) - scale the curve's path 'd' coordinates to fill that range (e.g. spanning roughly x: 40-640, y: 40-340), not an arbitrary/generic scale.",
+      "constraints": [],
+      "shapes": [
+        "quantitative",
+        "spatial"
+      ],
+      "status": "active"
+    },
+    "geo_marker": {
+      "best_for": "Geography, locations, maps, spatial distributions",
+      "template_data_hint": "{\"title\": \"...\", \"map_type\": \"world\", \"markers\": [{\"label\": \"...\", \"x\": 40, \"y\": 50, \"description\": \"...\", \"icon\": \"...\"}]}",
+      "constraints": [],
+      "shapes": [
+        "spatial"
+      ],
+      "status": "active"
+    },
+    "before_after_slider": {
+      "best_for": "State changes, cause vs effect, transformations",
+      "template_data_hint": "{\"title\": \"...\", \"before\": {\"label\": \"...\", \"bullets\": [{\"text\": \"...\", \"icon\": \"...\"}]}, \"after\": {\"label\": \"...\", \"bullets\": [{\"text\": \"...\", \"icon\": \"...\"}]}}",
+      "constraints": [],
+      "shapes": [
+        "cause_effect"
+      ],
+      "status": "active"
+    },
+    "quiz_checkpoint": {
+      "best_for": "Review/assessment scenes (last scene ideally)",
+      "template_data_hint": "{\"question\": \"...\", \"options\": [\"...\"], \"correct_index\": 0}",
+      "constraints": [
+        "last_scene_only"
+      ],
+      "shapes": [],
+      "status": "banned",
+      "banned_reason": "Product decision: lessons should end with a structural summary, not a quiz interruption, per current pedagogy rules."
+    },
+    "illustrated_scene": {
+      "best_for": "SVG-drawn scene of a physical/process/anatomical concept (e.g. water cycle with sun+sea+rising vapor, a stomach digesting, a plant cell, a historical scene) - the one template that draws real pictorial content instead of text-in-boxes; prefer this whenever the concept is something students would picture visually",
+      "template_data_hint": "PREFER THIS FIRST - seven generated shapes are available, always prefer one of these over hand-drawing when the concept fits: (0) If the concept is a boundary/structure containing several labeled parts inside it (a parliament building and its roles, a cell and its organelles, a country and its resources, a factory and its departments), use: {\"title\": \"...\", \"primitive_shape\": \"enclosure\", \"primitive_params\": {\"boundary\": {\"label\": \"...\"}, \"contents\": [{\"label\": \"...\"}]}} - draws a boundary shape with the listed items arranged inside it in a grid. (1) If the concept is one thing splitting/branching into several parts (an organ and its branches, a river and its tributaries, a family tree, an org chart, a neuron, a blood vessel network), use: {\"title\": \"...\", \"primitive_shape\": \"branching\", \"primitive_params\": {\"source\": {\"label\": \"...\"}, \"branches\": [{\"label\": \"...\", \"cluster\": true|false}]}} - \"cluster\": true draws a small grape-like circle cluster at that branch's tip (use for things like alveoli/capillaries/leaves - many small terminal parts), false draws a single labeled node (use for things like a named tributary, a family member, a department). (2) If the concept is a SINGLE vessel/organ that items flow into and/or out of - one central thing receiving and passing something on (blood through a heart chamber, a digestive organ receiving and passing on food, migration in/out of a single region) - NOT multiple named components wired to each other (that is node_network, option 5 below - e.g. a circuit with a battery/switch/bulb is node_network, NOT this), use: {\"title\": \"...\", \"primitive_shape\": \"container_flow\", \"primitive_params\": {\"container\": {\"label\": \"...\"}, \"inflows\": [{\"label\": \"...\"}], \"outflows\": [{\"label\": \"...\"}]}} - inflows draw as arrows entering from the left, outflows as arrows leaving to the right. (3) If the concept is a PAIR of mirrored organs joined by a central connector (lungs, kidneys, ears, brain hemispheres - exactly two symmetric halves that are physically organ/body-part shaped, not just any two-item comparison), use: {\"title\": \"...\", \"primitive_shape\": \"paired_organ\", \"primitive_params\": {\"stem\": {\"label\": \"...\"}, \"left\": {\"label\": \"...\"}, \"right\": {\"label\": \"...\"}}} - draws two mirrored organ-shaped blobs connected to a central stem. (4) If the concept is layers stacked on each other (Earth's core/mantle/crust, atmosphere layers, tiers of government from national to local, geological strata), use: {\"title\": \"...\", \"primitive_shape\": \"stacked_layers\", \"primitive_params\": {\"layers\": [{\"label\": \"...\"}], \"core_out\": true|false}} - list layers innermost-to-outermost with core_out=true for a center-outward concept (Earth's layers, an atom's shells), or top-to-bottom with core_out=false/omitted for a flat hierarchy (tiers of government, social strata). (5) PREFER THIS for any set of multiple named parts/components wired or connected to each other (a circuit with its battery/switch/resistor/bulb, a food web, a trade network, a computer network) - if the concept has several distinct named components connected to one another rather than one single vessel, this is almost always the right choice over container_flow. Use: {\"title\": \"...\", \"primitive_shape\": \"node_network\", \"primitive_params\": {\"nodes\": [{\"label\": \"...\"}], \"connections\": [[0, 1], [1, 2]]}} - nodes are 0-indexed in the order listed; connections are pairs of node indices to draw a line between. (6) If the concept is a central element with several things radiating outward from it (an atom's nucleus and electrons, a solar system, a leader with departments reporting in), use: {\"title\": \"...\", \"primitive_shape\": \"radiating_center\", \"primitive_params\": {\"center\": {\"label\": \"...\"}, \"satellites\": [{\"label\": \"...\"}]}}. All seven primitives' geometry is generated by code, not by you, so it is always correctly laid out - just supply the labels and structure. ONLY if the concept does NOT fit any of the seven shapes, fall back to hand-drawing raw elements: {\"title\": \"...\", \"animation_action\": \"rise|fall|spin|scale_up|slide_left|slide_right\" (how the drawn elements animate in), \"elements\": [{\"type\": \"path|circle|line|rect\", \"path_data\": \"SVG path 'd' attribute, required for type=path\", \"cx\": 640, \"cy\": 360, \"r\": 80 (for type=circle), \"stroke_color\": \"#hex\", \"stroke_width\": 2, \"fill\": \"rgba(r,g,b,a)\" or \"none\", \"dash_array\": \"8 6\" (REQUIRED on at least one element whenever the scene involves flow/movement - rising vapor, flowing water, wind, current, blood flow, electricity - so it actually animates as flowing rather than sitting static), \"label\": \"optional short text overlay for this element\"}]}. The drawing canvas is a FIXED 1280x720 pixel area (x: 0-1280, y: 0-720, origin top-left) - this is NOT a small icon canvas, so scale every coordinate to actually fill it: spread elements across roughly x: 100-1180, y: 100-620, and size circles/shapes generously (radius 40-120px, not 10px) so the scene reads clearly on a full-screen video frame. A tiny cluster of small shapes in one corner is a failure state, not a valid scene. MUST include 6-8 elements combining: an outline/shape (path), 2-3 moving/highlight accents (small circles), and flow indicators (dashed lines) to draw a recognizable, non-lazy scene - 4 elements is the bare structural minimum, not the target; e.g. for the water cycle: a sun (circle) top-right, wavy sea (path) spanning the bottom, 2-3 rising dashed lines for evaporation, a cloud shape (path or grouped circles) top-center, and falling lines for rain.",
+      "constraints": [],
+      "shapes": [
+        "process_spatial",
+        "transformation"
+      ],
+      "status": "active"
+    },
+    "image_scene": {
+      "best_for": "Real-world photo/image with annotations",
+      "template_data_hint": "{\"title\": \"...\", \"image_url\": \"...\", \"annotations\": [{\"x\": 0, \"y\": 0, \"text\": \"...\"}]}",
+      "constraints": [],
+      "status": "banned",
+      "banned_reason": "Requires a real image asset pipeline (image_url sourcing) not yet wired up end-to-end."
+    },
+    "general_scene": {
+      "best_for": "Free-form fallback only - not a deliberate LLM choice",
+      "template_data_hint": "{\"title\": \"...\"}",
+      "constraints": [],
+      "status": "fallback_only",
+      "fallback_reason": "Used internally by normalizeTemplateId() when an LLM-provided template_id doesn't match any known template. Never offer this to the LLM as a selectable option - if it starts appearing in generated lessons, that indicates a template_id normalization bug, not a valid scene choice."
+    }
+  }
+}

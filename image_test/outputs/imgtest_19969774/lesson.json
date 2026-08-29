@@ -1,0 +1,184 @@
+{
+  "lesson_id": "imgtest_19969774",
+  "lesson_title": "Understanding Soil Erosion",
+  "layout_mode": "timeline",
+  "theme": "Science",
+  "global_assets": [],
+  "connections": [],
+  "scenes": [
+    {
+      "scene_no": 1,
+      "purpose": "Introduce the concept of soil erosion and its significance.",
+      "beat_shape": "opener",
+      "template_id": "title_slide",
+      "template_selection_reasoning": "The title slide is essential for setting the stage for the lesson, providing a clear introduction to the topic of soil erosion.",
+      "camera": {
+        "zoom": 1.1,
+        "pan_x": 0,
+        "pan_y": 0,
+        "target_node": "main_concept"
+      },
+      "teacher_script": "Today, we will explore soil erosion, a critical environmental issue that affects agriculture and ecosystems. Understanding this concept is vital for effective soil conservation.",
+      "template_data": {
+        "title": "Understanding Soil Erosion",
+        "subtitle": "A Key Environmental Challenge"
+      },
+      "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_19969774/scene_1.wav"
+    },
+    {
+      "scene_no": 2,
+      "purpose": "Explain what soil erosion is and its causes.",
+      "beat_shape": "hierarchy",
+      "template_id": "concept_diagram",
+      "template_selection_reasoning": "A concept diagram effectively illustrates the definition of soil erosion and its various causes, allowing students to visualize the relationships between them.",
+      "camera": {
+        "zoom": 1.1,
+        "pan_x": 0,
+        "pan_y": 0,
+        "target_node": "main_concept"
+      },
+      "teacher_script": "Soil erosion is the process where the top layer of soil is removed, often due to natural forces like wind and water, or human activities such as deforestation and overgrazing. Let's look at the main causes.",
+      "template_data": {
+        "title": "Causes of Soil Erosion",
+        "central_node": {
+          "text": "Soil Erosion",
+          "icon": "earthquake"
+        },
+        "leaf_nodes": [
+          {
+            "text": "Natural Forces",
+            "icon": "wind"
+          },
+          {
+            "text": "Deforestation",
+            "icon": "forest"
+          },
+          {
+            "text": "Overgrazing",
+            "icon": "people"
+          },
+          {
+            "text": "Construction",
+            "icon": "factory"
+          }
+        ]
+      },
+      "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_19969774/scene_2.wav"
+    },
+    {
+      "scene_no": 3,
+      "purpose": "Illustrate the effects of soil erosion on land.",
+      "beat_shape": "process_spatial",
+      "template_id": "image_scene",
+      "template_selection_reasoning": "Using a real image to depict soil erosion provides a concrete visual representation of the concept, enhancing understanding through real-world context.",
+      "camera": {
+        "zoom": 1.1,
+        "pan_x": 0,
+        "pan_y": 0,
+        "target_node": "main_concept"
+      },
+      "teacher_script": "As we can see in this image, soil erosion can create deep channels and gullies, making the land unsuitable for cultivation. This degradation can lead to what we call 'bad land'.",
+      "template_data": {
+        "title": "Effects of Soil Erosion",
+        "image_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/book-processing/Class10_social/chapters/jess101/05_diagrams/images/p10_4_Im2.jpg",
+        "annotations": [
+          {
+            "x": 10,
+            "y": 10,
+            "text": "Gully Erosion"
+          }
+        ]
+      },
+      "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_19969774/scene_3.wav"
+    },
+    {
+      "scene_no": 4,
+      "purpose": "Discuss methods of soil conservation.",
+      "beat_shape": "hierarchy",
+      "template_id": "taxonomy_tree",
+      "template_selection_reasoning": "A taxonomy tree is suitable for categorizing different soil conservation methods, helping students understand the various strategies available.",
+      "camera": {
+        "zoom": 1.1,
+        "pan_x": 0,
+        "pan_y": 0,
+        "target_node": "main_concept"
+      },
+      "teacher_script": "To combat soil erosion, various conservation methods can be employed. These methods can be categorized into several types, each with its unique approach.",
+      "template_data": {
+        "title": "Soil Conservation Methods",
+        "root": {
+          "label": "Soil Conservation",
+          "icon": "shield",
+          "children": [
+            {
+              "label": "Contour Ploughing",
+              "icon": "gear",
+              "children": []
+            },
+            {
+              "label": "Terrace Farming",
+              "icon": "mountain",
+              "children": []
+            },
+            {
+              "label": "Strip Cropping",
+              "icon": "leaf",
+              "children": []
+            },
+            {
+              "label": "Shelter Belts",
+              "icon": "tree",
+              "children": []
+            }
+          ]
+        }
+      },
+      "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_19969774/scene_4.wav"
+    },
+    {
+      "scene_no": 5,
+      "purpose": "Summarize the lesson and reinforce key points.",
+      "beat_shape": "overlap",
+      "template_id": "venn_diagram",
+      "template_selection_reasoning": "A Venn diagram can effectively summarize the relationship between soil erosion and conservation methods, highlighting their interdependence.",
+      "camera": {
+        "zoom": 1.1,
+        "pan_x": 0,
+        "pan_y": 0,
+        "target_node": "main_concept"
+      },
+      "teacher_script": "In summary, soil erosion and conservation methods are interconnected. Understanding this relationship is crucial for sustainable land management.",
+      "template_data": {
+        "left_title": "Soil Erosion",
+        "right_title": "Soil Conservation",
+        "left": [
+          {
+            "text": "Causes: Natural & Human",
+            "icon": "earthquake"
+          },
+          {
+            "text": "Effects: Land Degradation",
+            "icon": "warning_triangle"
+          }
+        ],
+        "right": [
+          {
+            "text": "Methods: Contour Ploughing",
+            "icon": "gear"
+          },
+          {
+            "text": "Methods: Terrace Farming",
+            "icon": "mountain"
+          }
+        ],
+        "intersection": [
+          {
+            "text": "Need for Sustainable Practices",
+            "icon": "check"
+          }
+        ]
+      },
+      "audio_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/visual-lessons/imgtest_19969774/scene_5.wav"
+    }
+  ]
+}

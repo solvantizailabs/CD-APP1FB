@@ -1,0 +1,314 @@
+{
+  "blueprint": {
+    "lesson_title": "Understanding Soil Erosion",
+    "theme": "Science",
+    "scenes": [
+      {
+        "scene_no": 1,
+        "purpose": "Introduce the concept of soil erosion.",
+        "beat_shape": "opener",
+        "template_id": "title_slide",
+        "template_selection_reasoning": "The title slide is essential for setting the stage for the lesson, providing a clear introduction to the topic.",
+        "camera": {
+          "zoom": 1.1,
+          "pan_x": 0,
+          "pan_y": 0,
+          "target_node": "main_concept"
+        },
+        "teacher_script": "Today, we will explore the concept of soil erosion, its causes, and its effects on the environment. Understanding this topic is crucial for effective soil conservation.",
+        "template_data": {
+          "title": "Understanding Soil Erosion",
+          "subtitle": "Exploring Causes and Effects"
+        },
+        "audio_url": ""
+      },
+      {
+        "scene_no": 2,
+        "purpose": "Explain what soil erosion is and its natural and human-induced causes.",
+        "beat_shape": "hierarchy",
+        "template_id": "concept_diagram",
+        "template_selection_reasoning": "A concept diagram effectively illustrates the relationship between soil erosion and its causes, allowing for a clear understanding of the topic.",
+        "camera": {
+          "zoom": 1.1,
+          "pan_x": 0,
+          "pan_y": 0,
+          "target_node": "main_concept"
+        },
+        "teacher_script": "Soil erosion is the process of the top layer of soil being worn away. This can occur due to natural forces like wind and water, as well as human activities such as deforestation and over-grazing.",
+        "template_data": {
+          "title": "Causes of Soil Erosion",
+          "central_node": {
+            "text": "Soil Erosion",
+            "icon": "earthquake"
+          },
+          "leaf_nodes": [
+            {
+              "text": "Natural Causes",
+              "icon": "wind"
+            },
+            {
+              "text": "Human Activities",
+              "icon": "factory"
+            }
+          ]
+        },
+        "audio_url": ""
+      },
+      {
+        "scene_no": 3,
+        "purpose": "Illustrate the effects of soil erosion on land and agriculture.",
+        "beat_shape": "process_spatial",
+        "template_id": "image_scene",
+        "template_selection_reasoning": "Using a real image of soil erosion provides a concrete visual representation of the concept, enhancing understanding.",
+        "camera": {
+          "zoom": 1.1,
+          "pan_x": 0,
+          "pan_y": 0,
+          "target_node": "main_concept"
+        },
+        "teacher_script": "As soil erosion progresses, it creates deep channels and gullies, making the land unfit for cultivation. This image shows how erosion can severely impact the landscape.",
+        "template_data": {
+          "title": "Effects of Soil Erosion",
+          "image_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/book-processing/Class10_social/chapters/jess101/05_diagrams/images/p10_4_Im2.jpg",
+          "annotations": [
+            {
+              "x": 10,
+              "y": 10,
+              "text": "Gully Erosion"
+            }
+          ]
+        },
+        "audio_url": ""
+      },
+      {
+        "scene_no": 4,
+        "purpose": "Discuss methods of soil conservation to combat erosion.",
+        "beat_shape": "hierarchy",
+        "template_id": "taxonomy_tree",
+        "template_selection_reasoning": "A taxonomy tree effectively categorizes various soil conservation techniques, making it easier for students to grasp the different methods.",
+        "camera": {
+          "zoom": 1.1,
+          "pan_x": 0,
+          "pan_y": 0,
+          "target_node": "main_concept"
+        },
+        "teacher_script": "To combat soil erosion, various conservation techniques can be employed. These methods include contour ploughing, terrace farming, and planting shelter belts.",
+        "template_data": {
+          "title": "Soil Conservation Techniques",
+          "root": {
+            "label": "Soil Conservation",
+            "icon": "shield",
+            "children": [
+              {
+                "label": "Contour Ploughing",
+                "icon": "gear",
+                "children": []
+              },
+              {
+                "label": "Terrace Farming",
+                "icon": "mountain",
+                "children": []
+              },
+              {
+                "label": "Shelter Belts",
+                "icon": "tree",
+                "children": []
+              }
+            ]
+          }
+        },
+        "audio_url": ""
+      },
+      {
+        "scene_no": 5,
+        "purpose": "Summarize the key points discussed in the lesson.",
+        "beat_shape": "cyclical",
+        "template_id": "cycle_template",
+        "template_selection_reasoning": "The cycle template is ideal for summarizing the ongoing processes of soil erosion and conservation, reinforcing the interconnectedness of these concepts.",
+        "camera": {
+          "zoom": 1.1,
+          "pan_x": 0,
+          "pan_y": 0,
+          "target_node": "main_concept"
+        },
+        "teacher_script": "In summary, soil erosion is a critical issue caused by both natural and human factors. However, with effective conservation techniques, we can mitigate its impact and protect our land.",
+        "template_data": {
+          "title": "Summary of Soil Erosion",
+          "stages": [
+            {
+              "label": "Soil Erosion",
+              "icon": "earthquake"
+            },
+            {
+              "label": "Causes",
+              "icon": "wind"
+            },
+            {
+              "label": "Effects",
+              "icon": "factory"
+            },
+            {
+              "label": "Conservation Techniques",
+              "icon": "shield"
+            }
+          ]
+        },
+        "audio_url": ""
+      }
+    ]
+  },
+  "raw_clips": [
+    {
+      "scene_no": 1,
+      "purpose": "Introduce the concept of soil erosion.",
+      "beat_shape": "opener",
+      "template_id": "title_slide",
+      "template_selection_reasoning": "The title slide is essential for setting the stage for the lesson, providing a clear introduction to the topic.",
+      "camera": {
+        "zoom": 1.1,
+        "pan_x": 0,
+        "pan_y": 0,
+        "target_node": "main_concept"
+      },
+      "teacher_script": "Today, we will explore the concept of soil erosion, its causes, and its effects on the environment. Understanding this topic is crucial for effective soil conservation.",
+      "template_data": {
+        "title": "Understanding Soil Erosion",
+        "subtitle": "Exploring Causes and Effects"
+      },
+      "audio_url": ""
+    },
+    {
+      "scene_no": 2,
+      "purpose": "Explain what soil erosion is and its natural and human-induced causes.",
+      "beat_shape": "hierarchy",
+      "template_id": "concept_diagram",
+      "template_selection_reasoning": "A concept diagram effectively illustrates the relationship between soil erosion and its causes, allowing for a clear understanding of the topic.",
+      "camera": {
+        "zoom": 1.1,
+        "pan_x": 0,
+        "pan_y": 0,
+        "target_node": "main_concept"
+      },
+      "teacher_script": "Soil erosion is the process of the top layer of soil being worn away. This can occur due to natural forces like wind and water, as well as human activities such as deforestation and over-grazing.",
+      "template_data": {
+        "title": "Causes of Soil Erosion",
+        "central_node": {
+          "text": "Soil Erosion",
+          "icon": "earthquake"
+        },
+        "leaf_nodes": [
+          {
+            "text": "Natural Causes",
+            "icon": "wind"
+          },
+          {
+            "text": "Human Activities",
+            "icon": "factory"
+          }
+        ]
+      },
+      "audio_url": ""
+    },
+    {
+      "scene_no": 3,
+      "purpose": "Illustrate the effects of soil erosion on land and agriculture.",
+      "beat_shape": "process_spatial",
+      "template_id": "image_scene",
+      "template_selection_reasoning": "Using a real image of soil erosion provides a concrete visual representation of the concept, enhancing understanding.",
+      "camera": {
+        "zoom": 1.1,
+        "pan_x": 0,
+        "pan_y": 0,
+        "target_node": "main_concept"
+      },
+      "teacher_script": "As soil erosion progresses, it creates deep channels and gullies, making the land unfit for cultivation. This image shows how erosion can severely impact the landscape.",
+      "template_data": {
+        "title": "Effects of Soil Erosion",
+        "image_url": "https://oovmwkwsujujkvmoyffa.supabase.co/storage/v1/object/public/book-processing/Class10_social/chapters/jess101/05_diagrams/images/p10_4_Im2.jpg",
+        "annotations": [
+          {
+            "x": 10,
+            "y": 10,
+            "text": "Gully Erosion"
+          }
+        ]
+      },
+      "audio_url": ""
+    },
+    {
+      "scene_no": 4,
+      "purpose": "Discuss methods of soil conservation to combat erosion.",
+      "beat_shape": "hierarchy",
+      "template_id": "taxonomy_tree",
+      "template_selection_reasoning": "A taxonomy tree effectively categorizes various soil conservation techniques, making it easier for students to grasp the different methods.",
+      "camera": {
+        "zoom": 1.1,
+        "pan_x": 0,
+        "pan_y": 0,
+        "target_node": "main_concept"
+      },
+      "teacher_script": "To combat soil erosion, various conservation techniques can be employed. These methods include contour ploughing, terrace farming, and planting shelter belts.",
+      "template_data": {
+        "title": "Soil Conservation Techniques",
+        "root": {
+          "label": "Soil Conservation",
+          "icon": "shield",
+          "children": [
+            {
+              "label": "Contour Ploughing",
+              "icon": "gear",
+              "children": []
+            },
+            {
+              "label": "Terrace Farming",
+              "icon": "mountain",
+              "children": []
+            },
+            {
+              "label": "Shelter Belts",
+              "icon": "tree",
+              "children": []
+            }
+          ]
+        }
+      },
+      "audio_url": ""
+    },
+    {
+      "scene_no": 5,
+      "purpose": "Summarize the key points discussed in the lesson.",
+      "beat_shape": "cyclical",
+      "template_id": "cycle_template",
+      "template_selection_reasoning": "The cycle template is ideal for summarizing the ongoing processes of soil erosion and conservation, reinforcing the interconnectedness of these concepts.",
+      "camera": {
+        "zoom": 1.1,
+        "pan_x": 0,
+        "pan_y": 0,
+        "target_node": "main_concept"
+      },
+      "teacher_script": "In summary, soil erosion is a critical issue caused by both natural and human factors. However, with effective conservation techniques, we can mitigate its impact and protect our land.",
+      "template_data": {
+        "title": "Summary of Soil Erosion",
+        "stages": [
+          {
+            "label": "Soil Erosion",
+            "icon": "earthquake"
+          },
+          {
+            "label": "Causes",
+            "icon": "wind"
+          },
+          {
+            "label": "Effects",
+            "icon": "factory"
+          },
+          {
+            "label": "Conservation Techniques",
+            "icon": "shield"
+          }
+        ]
+      },
+      "audio_url": ""
+    }
+  ]
+}
