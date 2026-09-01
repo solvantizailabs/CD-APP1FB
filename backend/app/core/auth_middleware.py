@@ -40,12 +40,13 @@ async def auth_middleware(request: Request, call_next):
         "/pipeline-logs",
         # NOTE: "/api/admin/pipeline-logs" is deliberately NOT public - it
         # returns raw student questions and full LLM prompt text
-        # (prompt_sent). Gated by a shared-passphrase check
-        # (verify_pipeline_logs_key, PIPELINE_LOGS_KEY env var) in
-        # backend/app/api/routes/pipeline_logs.py, not Firebase auth - kept
-        # deliberately lightweight since this is an internal viewer, not a
-        # full admin console. The page shell above is public; it prompts
-        # for the key client-side and attaches it as a header on every call.
+        # (prompt_sent). Gated by verify_pipeline_logs_admin (real Firebase
+        # login + Firestore users/{uid}.role == "admin") in
+        # backend/app/api/routes/pipeline_logs.py, checked server-side on
+        # every call - tightened 2026-09-02 ahead of going live, previously
+        # a single shared passphrase. The page shell above stays public
+        # (same pattern as /admin-dashboard): it loads for anyone, then its
+        # own JS requires a real admin sign-in before it can load any data.
         "/api/upload",
         "/api/books",
         "/api/list-chapters",

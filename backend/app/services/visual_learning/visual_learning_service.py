@@ -409,8 +409,8 @@ async def generate_visual_lesson_stream(query: str, book_uuid: str, class_name: 
         next_flush_idx = 0
         pending_ready = {}
 
-        async def _on_audio_progress(slide_no: int, total_slides: int, audio_url: str):
-            await progress_queue.put((slide_no, total_slides, audio_url))
+        async def _on_audio_progress(slide_no: int, total_slides: int, audio_url: str, duration_ms: int = None):
+            await progress_queue.put((slide_no, total_slides, audio_url, duration_ms))
 
         try:
             audio_task = asyncio.create_task(
@@ -420,11 +420,13 @@ async def generate_visual_lesson_stream(query: str, book_uuid: str, class_name: 
             completed_count = 0
             while completed_count < total_clips and not audio_task.done():
                 try:
-                    s_no, total_s, s_audio_url = await asyncio.wait_for(progress_queue.get(), timeout=1.5)
+                    s_no, total_s, s_audio_url, s_duration_ms = await asyncio.wait_for(progress_queue.get(), timeout=1.5)
                     completed_count += 1
                     scene = scenes_by_no.get(s_no)
                     if scene is not None and s_audio_url:
                         scene["audio_url"] = s_audio_url
+                        if s_duration_ms is not None:
+                            scene["tts_duration_ms"] = s_duration_ms
                         pending_ready[s_no] = scene
                         # Flush every scene that's now ready, in strict
                         # narrative order, starting from the earliest one

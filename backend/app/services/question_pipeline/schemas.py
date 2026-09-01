@@ -149,6 +149,9 @@ class PipelineResult:
     """What the pipeline hands back to the caller (e.g. chat.py)."""
     final_answer: str
     status: str  # ANSWERED | CLARIFICATION_NEEDED | REFUSED | INSUFFICIENT_CONTEXT
+    request_id: Optional[str] = None  # this call's pipeline_logs doc id - lets a
+    # caller attach post-hoc data (TTS latency, video storyboard) that only
+    # exists AFTER this call returns, via log_store.update_pipeline_log()
     safety: Optional[SafetyResult] = None
     validation: Optional[ValidationResult] = None
     resolved: Optional[ResolvedQuestion] = None

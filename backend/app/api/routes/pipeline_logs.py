@@ -7,12 +7,29 @@ records) and backend/scripts/migrate_pipeline_logs.py (backfilled legacy
 records, flagged `legacy: true`).
 
 Internal/admin surface - not linked from student-facing UI.
+
+Auth tightened 2026-09-02, ahead of going live (was a single shared
+passphrase in PIPELINE_LOGS_KEY, decided acceptable 2026-08-31 for a
+local-only internal viewer - no longer acceptable once this is reachable
+from the public internet, since this data is raw student questions and
+full LLM prompt text). Now requires a real Firebase login AND that
+account's Firestore users/{uid}.role == "admin" - the same check
+admin-login.html already performs client-side, but enforced here
+server-side, per-request, on every call. Found while wiring this up: the
+existing require_admin()/is_admin custom-claim helper in auth_middleware.py
+is defined but never actually applied as a dependency on any admin route in
+this codebase - the existing /admin-dashboard pages only gate access
+client-side (redirect if logged out), with nothing stopping any
+authenticated user from calling those admin APIs directly. Deliberately not
+reusing that unused custom-claim mechanism here, since nothing evidences it
+being set on any real account - reusing the Firestore role field instead,
+since that's what actually gates the one admin login flow that works today.
 """
 import logging
-import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from firebase_admin import auth as firebase_auth
 from google.cloud import firestore
 
 from backend.app.core.firebase.firebase_init import db
@@ -22,19 +39,27 @@ from backend.app.services.question_pipeline.observability.log_store import FIRES
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Lightweight shared-passphrase gate (not Firebase admin auth - decided
-# 2026-08-31, this is meant to stay a quick internal viewer, not carry a
-# full login flow). Set PIPELINE_LOGS_KEY in .env; the dashboard prompts
-# for it once and remembers it in the browser's localStorage. Fails CLOSED
-# if the env var is unset, rather than silently leaving the endpoint open.
-_PIPELINE_LOGS_KEY = os.getenv("PIPELINE_LOGS_KEY", "")
 
+def verify_pipeline_logs_admin(authorization: str = Header(default="")):
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Sign in as an admin to view pipeline logs.")
+    token = authorization.split("Bearer ", 1)[1]
+    try:
+        decoded = firebase_auth.verify_id_token(token)
+    except Exception as e:
+        logger.warning(f"[PipelineLogs] Rejected invalid/expired token: {e}")
+        raise HTTPException(status_code=401, detail="Your session has expired - please sign in again.")
 
-def verify_pipeline_logs_key(x_pipeline_logs_key: str = Header(default="")):
-    if not _PIPELINE_LOGS_KEY:
-        raise HTTPException(status_code=503, detail="PIPELINE_LOGS_KEY is not configured on the server.")
-    if x_pipeline_logs_key != _PIPELINE_LOGS_KEY:
-        raise HTTPException(status_code=403, detail="Invalid or missing pipeline logs key.")
+    uid = decoded.get("uid")
+    try:
+        user_doc = db.collection("users").document(uid).get()
+    except Exception as e:
+        logger.error(f"[PipelineLogs] Firestore role lookup failed for uid={uid}: {e}")
+        raise HTTPException(status_code=503, detail="Could not verify admin status right now.")
+
+    if not user_doc.exists or user_doc.to_dict().get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin privileges required.")
+
 
 _LIST_FIELDS = (
     "request_id", "timestamp", "uid", "tracker_id", "book_session_id",
@@ -60,7 +85,7 @@ def _sort_key(doc_dict: dict):
     return (0, doc_dict.get("request_id", ""))
 
 
-@router.get("/api/admin/pipeline-logs", tags=["Pipeline Trace Inspector"], dependencies=[Depends(verify_pipeline_logs_key)])
+@router.get("/api/admin/pipeline-logs", tags=["Pipeline Trace Inspector"], dependencies=[Depends(verify_pipeline_logs_admin)])
 async def list_pipeline_logs(
     tracker_id: Optional[str] = Query(None),
     uid: Optional[str] = Query(None),
@@ -85,7 +110,7 @@ async def list_pipeline_logs(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/admin/pipeline-logs/{request_id}", tags=["Pipeline Trace Inspector"], dependencies=[Depends(verify_pipeline_logs_key)])
+@router.get("/api/admin/pipeline-logs/{request_id}", tags=["Pipeline Trace Inspector"], dependencies=[Depends(verify_pipeline_logs_admin)])
 async def get_pipeline_log_detail(request_id: str):
     """Full record for one request - stages, LLM calls, follow-up/chunk-cache detail."""
     try:
@@ -100,7 +125,7 @@ async def get_pipeline_log_detail(request_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/api/admin/pipeline-logs/session/{uid}", tags=["Pipeline Trace Inspector"], dependencies=[Depends(verify_pipeline_logs_key)])
+@router.get("/api/admin/pipeline-logs/session/{uid}", tags=["Pipeline Trace Inspector"], dependencies=[Depends(verify_pipeline_logs_admin)])
 async def get_tracker_session_status(uid: str):
     """Current login-session tracker status for a uid - tracker_id + hours_left
     for the dashboard's countdown display. Does NOT create a new tracker if

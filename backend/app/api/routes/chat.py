@@ -26,7 +26,7 @@ from backend.app.core.firebase.firebase_init import db
 from backend.app.core import firestore_service
 from backend.app.core.firestore_service import check_global_query_cache, save_to_global_query_cache
 from backend.app.services.personalization import profile_service
-from backend.app.orchestrator_test.test_runner import run_orchestrator_pipeline
+from backend.app.services.question_pipeline.chat_adapter import run_new_orchestrator_pipeline
 from backend.app.services.deployment_logger import save_chat_log_background
 
 def format_text_explanation(text) -> str:
@@ -634,7 +634,7 @@ async def smart_query_engine(
             # 3. Cache Miss: Run Orchestrator Pipeline
             # Run in thread executor so the async event loop is NOT blocked during LLM calls
             # Propagate ContextVars (tracking context) using copy_context().run to fix 0-stats issue
-            print(f"[CACHE MISS] Calling single-pass Orchestrator Agent...")
+            print(f"[CACHE MISS] Calling new question_pipeline Orchestrator...")
             print(f"[DEBUG] student_profile before orchestrator call: {student_profile}")
             import contextvars
             ctx = contextvars.copy_context()
@@ -642,9 +642,12 @@ async def smart_query_engine(
             report = await loop.run_in_executor(
                 None,  # uses the default ThreadPoolExecutor
                 ctx.run,
-                run_orchestrator_pipeline,
+                run_new_orchestrator_pipeline,
                 query,
-                student_profile
+                student_profile,
+                session["session_id"],
+                recent_window,
+                uid,
             )
             out = report.get("orchestrator_output", {})
             # Real, Firestore-validated book_uuid for the orchestrator's matched_subject
@@ -801,6 +804,35 @@ async def smart_query_engine(
                             yield f"data: {json.dumps(chunk_json)}\n\n"
                     except Exception as json_err:
                         logger.error(f"[SSE FORWARD] Parse error: {json_err} on raw: {raw_data}")
+
+                # Attach the real storyboard (2026-09-02, per explicit
+                # request) - text_narration is null by design for
+                # VIDEO_REQUIRED, so the pipeline log otherwise shows nothing
+                # for what the student actually received. This is generated
+                # entirely downstream of run_pipeline() (in
+                # generate_visual_lesson_stream above), so it can only be
+                # attached now, via a post-hoc update to the same log record.
+                if report.get("request_id") and video_scenes_for_cache:
+                    from backend.app.services.question_pipeline.observability import log_store
+                    storyboard_scenes = [
+                        {
+                            "scene_no": s.get("scene_no"),
+                            "title": (s.get("template_data") or {}).get("title") or (s.get("template_data") or {}).get("heading") or s.get("purpose"),
+                            "teacher_script": s.get("teacher_script"),
+                            "audio_url": s.get("audio_url"),
+                            "tts_duration_ms": s.get("tts_duration_ms"),
+                        }
+                        for s in video_scenes_for_cache
+                    ]
+                    log_store.update_pipeline_log(report["request_id"], {
+                        "video_storyboard": {
+                            "lesson_title": (updated_lesson_package or {}).get("lesson_title"),
+                            "interactive_url": interactive_url,
+                            "scene_count": len(storyboard_scenes),
+                            "scenes": storyboard_scenes,
+                            "total_tts_duration_ms": sum(s.get("tts_duration_ms") or 0 for s in storyboard_scenes),
+                        },
+                    })
             else:
                 # STANDARD QUICK_ANSWER FLOW - stream the orchestrator's own text_narration
                 text_script = format_text_explanation(text_script)
@@ -1016,12 +1048,20 @@ async def smart_query_engine(
                 answer_audio_url = None
                 if not interactive_url and text_script and tts_model == "sarvam":
                     from backend.app.services.chat.tts_service import synthesize_and_persist_answer_audio
+                    _tts_started = time.time()
                     answer_audio_url = await synthesize_and_persist_answer_audio(
                         text=text_script,
                         storage_key=f"{uid}_{int(time.time() * 1000)}",
                         language=tts_language,
                         speaker=tts_speaker,
                     )
+                    _tts_duration_ms = round((time.time() - _tts_started) * 1000)
+                    if report.get("request_id"):
+                        from backend.app.services.question_pipeline.observability import log_store
+                        log_store.update_pipeline_log(report["request_id"], {
+                            "tts": {"model": tts_model, "speaker": tts_speaker, "language": tts_language,
+                                    "duration_ms": _tts_duration_ms, "audio_url": answer_audio_url},
+                        })
 
                 from backend.app.services.analytics import analytics_service
                 _query_doc_id = analytics_service.log_query(

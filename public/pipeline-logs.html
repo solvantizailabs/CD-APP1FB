@@ -262,13 +262,11 @@
   </main>
 </div>
 
-<div class="key-modal-overlay hidden" id="key-modal-overlay">
-  <form class="key-modal" id="key-modal-form">
-    <p class="card-title" style="margin-bottom:8px;">Pipeline logs access key</p>
-    <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">This dashboard shows raw student questions and full LLM prompts - enter the shared key configured on the server (<span class="mono">PIPELINE_LOGS_KEY</span>).</p>
-    <input class="filter-input" id="key-modal-input" style="color:var(--text); background:var(--surface-2); border-color:var(--border);" placeholder="access key" autocomplete="off">
-    <button class="filter-btn" type="submit" style="margin-top:12px; width:100%;">Continue</button>
-  </form>
+<div class="key-modal-overlay hidden" id="auth-gate-overlay">
+  <div class="key-modal">
+    <p class="card-title" style="margin-bottom:8px;" id="auth-gate-title">Checking admin access&hellip;</p>
+    <p style="font-size:12.5px; color:var(--text-dim); margin:0;" id="auth-gate-message">This dashboard shows raw student questions and full LLM prompts, so it requires an admin login.</p>
+  </div>
 </div>
 
 <div class="text-overlay hidden" id="text-overlay">
@@ -284,38 +282,65 @@
   </div>
 </div>
 
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+<script src="/static/firebase-config.js"></script>
 <script>
 const API_BASE = "";
-const ACCESS_KEY_STORAGE = "pipeline_logs_access_key";
 let allRows = [];
 let activeQuickFilter = null;
-let accessKey = localStorage.getItem(ACCESS_KEY_STORAGE) || "";
 
-// This dashboard reads raw student questions and full LLM prompt text
-// (prompt_sent) - every call to the pipeline-logs API must carry the
-// shared key set server-side as PIPELINE_LOGS_KEY (checked by
-// verify_pipeline_logs_key in backend/app/api/routes/pipeline_logs.py).
-// Deliberately NOT a full login flow - this is meant to stay a quick
-// internal viewer, just enough to keep the URL from being wide open.
-function authedFetch(url) {
-  return fetch(url, { headers: accessKey ? { 'X-Pipeline-Logs-Key': accessKey } : {} });
+// Tightened 2026-09-02, ahead of going live - was a single shared
+// passphrase (fine for a local-only internal viewer, not once this is
+// reachable from the public internet showing raw student questions and
+// full LLM prompt text). Now a real Firebase login, server-verified on
+// every call against Firestore users/{uid}.role === "admin" -
+// verify_pipeline_logs_admin in backend/app/api/routes/pipeline_logs.py -
+// same login page/flow as the existing /admin-dashboard, reused rather
+// than duplicated. authedFetch always fetches a fresh ID token (Firebase
+// caches/refreshes it internally, tokens expire hourly) rather than
+// caching one here that could go stale mid-session.
+const authGateOverlay = document.getElementById('auth-gate-overlay');
+const authGateTitle = document.getElementById('auth-gate-title');
+const authGateMessage = document.getElementById('auth-gate-message');
+let currentAdminUser = null;
+
+function showAuthGate(title, message) {
+  authGateTitle.textContent = title;
+  authGateMessage.textContent = message;
+  authGateOverlay.classList.remove('hidden');
 }
 
-function promptForKey() {
+async function authedFetch(url) {
+  if (!currentAdminUser) throw new Error('Not signed in');
+  const token = await currentAdminUser.getIdToken();
+  return fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+}
+
+function waitForAdminAuth() {
   return new Promise((resolve) => {
-    const overlay = document.getElementById('key-modal-overlay');
-    const form = document.getElementById('key-modal-form');
-    const input = document.getElementById('key-modal-input');
-    overlay.classList.remove('hidden');
-    input.value = '';
-    input.focus();
-    form.onsubmit = (e) => {
-      e.preventDefault();
-      accessKey = input.value.trim();
-      localStorage.setItem(ACCESS_KEY_STORAGE, accessKey);
-      overlay.classList.add('hidden');
-      resolve(accessKey);
-    };
+    firebase.auth().onAuthStateChanged(async (user) => {
+      if (!user) {
+        showAuthGate('Admin sign-in required', 'Redirecting to the admin login page…');
+        window.location.href = '/admin-login.html?redirect=' + encodeURIComponent(window.location.pathname);
+        return;
+      }
+      try {
+        const userDoc = await firebase.firestore().collection('users').doc(user.uid).get();
+        if (!userDoc.exists || userDoc.data().role !== 'admin') {
+          showAuthGate('Admin privileges required', 'This account is not an admin. Sign out and sign in with an admin account.');
+          await firebase.auth().signOut();
+          return;
+        }
+      } catch (e) {
+        showAuthGate('Could not verify admin status', String(e));
+        return;
+      }
+      currentAdminUser = user;
+      authGateOverlay.classList.add('hidden');
+      resolve(user);
+    });
   });
 }
 
@@ -353,15 +378,10 @@ async function loadList() {
   listBody.innerHTML = '<tr class="loading-row"><td colspan="7">Loading pipeline logs&hellip;</td></tr>';
   try {
     const res = await authedFetch(`${API_BASE}/api/admin/pipeline-logs?${params.toString()}`);
-    if (res.status === 403) {
-      localStorage.removeItem(ACCESS_KEY_STORAGE);
-      accessKey = "";
-      listBody.innerHTML = '<tr class="loading-row"><td colspan="7">Wrong or missing access key. <a href="#" id="retry-key-link">Click to try again</a>.</td></tr>';
-      document.getElementById('retry-key-link').addEventListener('click', async (e) => { e.preventDefault(); await promptForKey(); loadList(); });
-      return;
-    }
-    if (res.status === 503) {
-      listBody.innerHTML = '<tr class="loading-row"><td colspan="7">Server has no PIPELINE_LOGS_KEY configured - set it in .env and restart the backend.</td></tr>';
+    if (res.status === 401 || res.status === 403) {
+      const body = await res.json().catch(() => ({}));
+      listBody.innerHTML = `<tr class="loading-row"><td colspan="7">${escapeHtml(body.detail || 'Access denied.')} <a href="#" id="retry-key-link">Sign in again</a>.</td></tr>`;
+      document.getElementById('retry-key-link').addEventListener('click', async (e) => { e.preventDefault(); await firebase.auth().signOut(); window.location.reload(); });
       return;
     }
     const data = await res.json();
@@ -588,25 +608,62 @@ function renderDetail(r) {
     return `<div class="chunk-slot-note" style="margin-bottom:10px;">These chunks were ${sourceNote} and are exactly what went into the answer-generation prompt below.</div>${renderChunkList(rf.chunks_used)}`;
   })();
 
+  const videoStoryboardHtml = (() => {
+    const sb = r.video_storyboard;
+    if (!sb || !sb.scenes || sb.scenes.length === 0) return '';
+    const scenesHtml = sb.scenes.map(s => {
+      const script = s.teacher_script || '(no narration text)';
+      const id = regText(script);
+      const ttsNote = s.tts_duration_ms != null
+        ? `<span class="score">TTS ${s.tts_duration_ms.toLocaleString()} ms</span>`
+        : '<span class="loc">TTS timing n/a</span>';
+      return `<div class="chunk-item">
+        <div class="chunk-item-head">
+          <span><b>Scene ${s.scene_no ?? '?'}</b> ${escapeHtml(s.title || '')}</span>
+          ${ttsNote}
+        </div>
+        <div class="chunk-item-text">${escapeHtml(script.slice(0, 300))}${script.length > 300 ? '…' : ''}</div>
+        ${overlayBtn(id, 'View full narration', `Scene ${s.scene_no ?? '?'} — ${s.title || 'untitled'}`)}
+      </div>`;
+    }).join('');
+    return `<div class="chunk-slot-note" style="margin-bottom:10px;">${sb.scene_count} scene(s) &middot; ${escapeHtml(sb.lesson_title || 'untitled lesson')} &middot; total TTS <b style="color:var(--text);">${(sb.total_tts_duration_ms || 0).toLocaleString()} ms</b></div>${scenesHtml}`;
+  })();
+
   const finalAnswerHtml = (() => {
     if (r.final_answer) {
       const id = regText(r.final_answer);
       const preview = r.final_answer.length > 400 ? r.final_answer.slice(0, 400) + '…' : r.final_answer;
       return `<div class="prompt-block" style="background:var(--surface-2); color:var(--text); max-height:200px;">${escapeHtml(preview)}</div>${overlayBtn(id, 'View full answer', 'Final answer delivered to student')}`;
     }
+    const isVideoFormat = /VIDEO/i.test(r.format_decision || '');
+    if (isVideoFormat && videoStoryboardHtml) {
+      return `<div class="chunk-slot-note" style="margin-bottom:10px;">No text_narration for this request by design (VIDEO_REQUIRED) - showing the actual storyboard delivered instead.</div>${videoStoryboardHtml}`;
+    }
     // final_answer key exists (empty string) on any record captured after
     // 2026-09-01, vs. genuinely absent on older records - distinguish those
     // rather than calling a legitimate empty video-only answer "not captured".
     if ('final_answer' in r) {
-      const isVideoFormat = /VIDEO/i.test(r.format_decision || '');
       const note = r.format_decision
         ? (isVideoFormat
-            ? ` - format_decision was <b style="color:var(--text);">${escapeHtml(r.format_decision)}</b> (a video/visual response, so no text_narration is expected).`
+            ? ` - format_decision was <b style="color:var(--text);">${escapeHtml(r.format_decision)}</b> (a video/visual response with no storyboard captured for this record).`
             : ` - format_decision was <b style="color:var(--text);">${escapeHtml(r.format_decision)}</b>, which normally DOES carry text_narration. Worth checking the answer_generation output for why it came back empty.`)
         : '.';
       return `<div class="chunk-slot-note">The saved text answer for this request is empty${note}</div>`;
     }
     return `<div class="chunk-slot-note">Not captured for this record${r.legacy ? ' (pre-instrumentation record)' : ' (this record predates final-answer capture)'}.</div>`;
+  })();
+
+  const ttsHtml = (() => {
+    if (r.tts) {
+      const t = r.tts;
+      return `<div class="kv-row"><span class="k">Model</span><span class="v">${escapeHtml(t.model || '?')} / ${escapeHtml(t.speaker || '?')} / ${escapeHtml(t.language || '?')}</span></div>
+        <div class="kv-row kv-total"><span class="k">Server TTS latency</span><span class="v">${t.duration_ms != null ? t.duration_ms.toLocaleString() + ' ms' : '—'}</span></div>`;
+    }
+    if (r.video_storyboard) {
+      return `<div class="kv-row"><span class="k">Scenes</span><span class="v">${r.video_storyboard.scene_count ?? '?'}</span></div>
+        <div class="kv-row kv-total"><span class="k">Total TTS latency</span><span class="v">${(r.video_storyboard.total_tts_duration_ms || 0).toLocaleString()} ms</span></div>`;
+    }
+    return `<div class="chunk-slot-note">No TTS ran for this request (no audio needed, or not captured).</div>`;
   })();
 
   // c.raw_output only exists on records logged after 2026-09-01 (the field
@@ -686,6 +743,7 @@ function renderDetail(r) {
           <div class="kv-row"><span class="k">Total tokens</span><span class="v">${r.total_tokens != null ? r.total_tokens.toLocaleString() : '—'}</span></div>
           <div class="kv-row kv-total"><span class="k">Total cost</span><span class="v">${r.total_cost != null ? '$' + r.total_cost.toFixed(6) : '—'}</span></div>
         </div>
+        <div class="card"><p class="card-title">Text-to-speech</p>${ttsHtml}</div>
       </div>
     </div>`;
 }
@@ -754,7 +812,7 @@ document.getElementById('detail-root').addEventListener('click', (e) => {
   openTextOverlay(btn.dataset.ovTitle || 'Full text', overlayStore[btn.dataset.ov] || '');
 });
 (async () => {
-  if (!accessKey) await promptForKey();
+  await waitForAdminAuth();
   loadList();
 })();
 </script>

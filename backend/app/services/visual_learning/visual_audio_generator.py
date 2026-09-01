@@ -96,16 +96,21 @@ async def _generate_single_slide_audio(
         
     try:
         from backend.app.services.chat.tts_service import synthesize_text_cached
+        # Timed for pipeline-logs observability (2026-09-02, per explicit
+        # request) - this is the actual Sarvam API round-trip, the number
+        # that answers "how long is the server TTS taking per clip".
+        tts_started = time.time()
         all_audio_bytes, _ = await synthesize_text_cached(
             text=text,
             language="en-IN",
             speaker="ritu",
             model="bulbul:v3"
         )
-        
+        tts_duration_ms = round((time.time() - tts_started) * 1000)
+
         with open(wav_path, "wb") as f:
             f.write(all_audio_bytes)
-            
+
         from backend.app.core.supabase_storage import upload_file_to_supabase
         # upload_file_to_supabase uses a blocking httpx.Client, not the async
         # one - calling it directly here would freeze the whole event loop for
@@ -115,11 +120,11 @@ async def _generate_single_slide_audio(
         cloud_audio_url = await asyncio.to_thread(upload_file_to_supabase, wav_path, f"{lesson_id}/{wav_filename}")
         final_audio_url = cloud_audio_url or f"/uploads/visual_lessons/{lesson_id}/{wav_filename}"
 
-        logger.info(f"[RENDER LOG] [AUDIO TTS SUCCESS] Scene {slide_no} audio ready ({len(all_audio_bytes)} bytes) -> {final_audio_url}")
+        logger.info(f"[RENDER LOG] [AUDIO TTS SUCCESS] Scene {slide_no} audio ready ({len(all_audio_bytes)} bytes, {tts_duration_ms} ms) -> {final_audio_url}")
         print(f"[RENDER LOG] [AUDIO TTS SUCCESS] Scene {slide_no} audio ready -> {final_audio_url}", flush=True)
 
         if progress_callback:
-            await progress_callback(slide_no, total_slides, final_audio_url)
+            await progress_callback(slide_no, total_slides, final_audio_url, tts_duration_ms)
 
         return final_audio_url
 

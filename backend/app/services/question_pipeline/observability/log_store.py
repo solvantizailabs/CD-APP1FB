@@ -47,3 +47,33 @@ def _save_firestore(record: Dict[str, Any]) -> None:
         db.collection(FIRESTORE_COLLECTION).document(record["request_id"]).set(record)
     except Exception as e:
         logger.warning(f"[PipelineLog] Firestore write failed: {e}")
+
+
+def update_pipeline_log(request_id: str, updates: Dict[str, Any]) -> None:
+    """
+    Patches fields onto an ALREADY-SAVED record, for data that only exists
+    after run_pipeline() has already returned and logged (2026-09-02) - TTS
+    latency and the video storyboard, both generated downstream in chat.py/
+    visual_learning_service.py, structurally outside this module. A merge
+    (not a full overwrite) so it can never clobber the original record.
+    Fail-open, same as save_pipeline_log - never allowed to affect the
+    student-facing answer.
+    """
+    if not request_id:
+        return
+    try:
+        from backend.app.core.firebase.firebase_init import db
+        db.collection(FIRESTORE_COLLECTION).document(request_id).update(updates)
+    except Exception as e:
+        logger.warning(f"[PipelineLog] Firestore update failed for {request_id}: {e}")
+    try:
+        path = os.path.join(_LOCAL_LOG_DIR, f"{request_id}.json")
+        if not os.path.exists(path):
+            return
+        with open(path, "r", encoding="utf-8") as f:
+            record = json.load(f)
+        record.update(updates)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(record, f, indent=2, default=str, ensure_ascii=False)
+    except Exception as e:
+        logger.warning(f"[PipelineLog] local JSON update failed for {request_id}: {e}")

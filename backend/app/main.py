@@ -1,8 +1,37 @@
 import os
 import sys
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
+
+# No logging.basicConfig() existed anywhere in this app before 2026-09-02 -
+# every logger.info()/warning() call across backend/ (including all of
+# question_pipeline/'s stage tracing) silently went nowhere, since Python's
+# logging is a no-op without a configured handler. Root stays at WARNING to
+# keep third-party libraries (urllib3, openai SDK, etc.) quiet; only this
+# app's own "backend.*" loggers are bumped to INFO so pipeline tracing is
+# actually visible in the console while testing.
+logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logging.getLogger("backend").setLevel(logging.INFO)
+
+# Found live 2026-09-02: with logging now configured (above), logger.info()
+# lines appeared in the console immediately, but the codebase's many raw
+# print() calls (session_service.py's "[SESSION] ..." lines, chat.py's
+# "[CACHE MISS] ..." lines, etc.) did not - they stayed invisible for the
+# entire ~60-90s a real curriculum-decision request takes, making an
+# in-progress request look frozen. Root cause: Python's logging.StreamHandler
+# explicitly flushes on every emit, but stdout itself is block-buffered by
+# default when it isn't a real interactive terminal (piped through an IDE's
+# integrated terminal, uvicorn --reload's subprocess, etc.) - print() output
+# just sits in that buffer instead of appearing immediately. Forcing line
+# buffering makes print() flush after every newline, same as logging already
+# does, so console output actually reflects what's happening in real time.
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception:
+    pass
 
 # Ensure Windows uses Proactor event loop for subprocess support
 if sys.platform == "win32":

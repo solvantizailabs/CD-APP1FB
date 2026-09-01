@@ -103,6 +103,7 @@ def run_pipeline(
             "trace": trace,
         }
         log_store.save_pipeline_log(record)
+        result.request_id = request_id
         return result
 
     # --- Stage 1a/1b: safety, always runs first, no exceptions -------------
@@ -265,13 +266,18 @@ def run_pipeline(
     # --- Stage 6: format decision + generation ---------------------------------
     with timer.stage("answer_generation"):
         if is_curriculum:
-            result = generation.generate_answer(query.resolved_question, grade, rag_result.context, is_curriculum=True, openai_client=openai_client, model_name=model_name, llm_calls=llm_calls)
+            result = generation.generate_answer(query.resolved_question, grade, rag_result.context, is_curriculum=True, openai_client=openai_client, model_name=model_name, llm_calls=llm_calls, learner_context=pipeline_input.learner_context)
         elif routing.should_use_web_search(query.resolved_question):
             trace.append("non_curriculum route=web_search")
             result = generation.generate_web_search_answer(query.resolved_question, grade, board, pipeline_input.conversation_context, openai_client, model_name, llm_calls=llm_calls)
         else:
             trace.append("non_curriculum route=direct_llm")
-            result = generation.generate_answer(query.resolved_question, grade, "", is_curriculum=False, openai_client=openai_client, model_name=model_name, llm_calls=llm_calls)
+            result = generation.generate_answer(query.resolved_question, grade, "", is_curriculum=False, openai_client=openai_client, model_name=model_name, llm_calls=llm_calls, learner_context=pipeline_input.learner_context)
+        # Shared corrective pass (personalization parity requirement,
+        # 2026-09-02): applies RESPONSE_STYLE_PREFERENCE reliably regardless
+        # of which branch above produced text_narration, same as the old
+        # flow's single restyle gate applied uniformly after its one call.
+        result = generation.apply_personalized_restyle(result, pipeline_input.learner_context, pipeline_input.student_question, openai_client, model_name)
     trace.append(f"format_decision={result['format_decision']}")
 
     # --- Stage 8: save (Stage 7/delivery is the caller's job - TTS/video) ------

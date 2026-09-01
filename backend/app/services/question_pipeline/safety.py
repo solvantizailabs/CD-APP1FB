@@ -121,14 +121,20 @@ def check_layer1_rules(question: str, conversation_context: List[Dict]) -> Safet
 # lands here, so these hard-block immediately.
 _HARD_BLOCK_CATEGORIES = {
     "self-harm", "self-harm/intent", "self-harm/instructions",
-    "illicit", "illicit/violent",
+    "illicit",
     "hate", "hate/threatening", "harassment/threatening",
     "sexual/minors",
 }
 # Categories where curriculum content (reproductive biology, historical/
-# civics violence, personal-framed body questions) can plausibly score -
-# these are marked borderline, not blocked, and resolved by Layer 3.
-_BORDERLINE_CATEGORIES = {"violence", "violence/graphic", "sexual", "harassment"}
+# civics violence, personal-framed body questions, industrial/manufacturing
+# processes) can plausibly score - these are marked borderline, not blocked,
+# and resolved by Layer 3. "illicit/violent" moved here 2026-09-02 after a
+# real false positive found live: "how steel is made in factories" (genuine
+# NCERT Class 10 Manufacturing Industries content) was hard-blocked under
+# this category with zero chance for Layer 3 to check it against real
+# curriculum content - the same failure mode "violence" was already
+# deliberately protected against below.
+_BORDERLINE_CATEGORIES = {"violence", "violence/graphic", "illicit/violent", "sexual", "harassment"}
 
 _moderation_client = None
 

@@ -207,6 +207,13 @@
         const loginBtn = document.getElementById('login-btn');
         const errorDiv = document.getElementById('error-message');
 
+        // Optional ?redirect=/some-admin-page - other internal admin pages
+        // (e.g. pipeline-logs.html) send an unauthenticated visitor here and
+        // expect to land back where they started after a successful login,
+        // not always on /admin-dashboard. Defaults to the original
+        // hardcoded destination when absent, so this is purely additive.
+        const redirectTarget = new URLSearchParams(window.location.search).get('redirect') || '/admin-dashboard';
+
         // Check if already logged in
         firebase.auth().onAuthStateChanged(async (user) => {
             if (user) {
@@ -214,7 +221,7 @@
                 const userDoc = await db.collection('users').doc(user.uid).get();
                 if (userDoc.exists && userDoc.data().role === 'admin') {
                     // Already logged in as admin - redirect
-                    window.location.href = '/admin-dashboard';
+                    window.location.href = redirectTarget;
                 } else if (userDoc.exists) {
                     // Logged in but not admin - show error and logout
                     showError('You are logged in as a student. Please logout first.');
@@ -256,9 +263,9 @@
                     throw new Error('Access denied. Only administrators can login here.');
                 }
 
-                // Success! Admin verified - redirect to admin dashboard
+                // Success! Admin verified - redirect back where the visitor came from
                 console.log('[ADMIN LOGIN] Success:', userData.email);
-                window.location.href = '/admin-dashboard';
+                window.location.href = redirectTarget;
 
             } catch (error) {
                 console.error('[ADMIN LOGIN] Error:', error);
