@@ -66,6 +66,12 @@ backend/app/orchestrator_test/test_outputs/
 backend/app/services/new_rag/outputs/
 _query_debug.json
 
+# Generated test-run output (real student query/answer data from local test
+# harnesses, not code) - the harness scripts themselves stay tracked, only
+# their per-run JSON output is excluded.
+terminal_test/outputs/
+backend/app/services/question_pipeline/evaluation/outputs/
+
 # ============ SYSTEM FILES ============
 .DS_Store
 Thumbs.db

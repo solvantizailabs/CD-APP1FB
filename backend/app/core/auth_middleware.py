@@ -37,6 +37,15 @@ async def auth_middleware(request: Request, call_next):
         "/profile",
         "/achievements",
         "/mode-selection",
+        "/pipeline-logs",
+        # NOTE: "/api/admin/pipeline-logs" is deliberately NOT public - it
+        # returns raw student questions and full LLM prompt text
+        # (prompt_sent). Gated by a shared-passphrase check
+        # (verify_pipeline_logs_key, PIPELINE_LOGS_KEY env var) in
+        # backend/app/api/routes/pipeline_logs.py, not Firebase auth - kept
+        # deliberately lightweight since this is an internal viewer, not a
+        # full admin console. The page shell above is public; it prompts
+        # for the key client-side and attaches it as a header on every call.
         "/api/upload",
         "/api/books",
         "/api/list-chapters",

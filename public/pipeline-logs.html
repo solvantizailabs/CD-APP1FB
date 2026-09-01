@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pipeline Trace Inspector</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --ink-950:#14171F; --paper-50:#F8F6F1; --amber-500:#D98E3F;
+    --teal-500:#2F8F80; --coral-500:#C15B4A; --slate-500:#5B6478;
+    --bg: var(--paper-50); --surface: #FFFFFF; --surface-2: #F0EDE6; --border: #E2DED3;
+    --text: #22252C; --text-dim: #6B6F7A; --accent: var(--amber-500); --accent-ink: #6B4A1E;
+    --ok: var(--teal-500); --ok-bg: #E4F2EF; --warn: var(--coral-500); --warn-bg: #F7E9E5;
+    --neutral-chip: #EAE7DF; --rail-bg: var(--ink-950); --rail-text: #D8D6CE; --rail-text-dim: #8B8D93;
+    --rail-active: #21252F;
+    --shadow: 0 1px 2px rgba(20,23,31,0.04), 0 8px 24px rgba(20,23,31,0.06);
+  }
+  :root:not([data-theme="light"]) { @media (prefers-color-scheme: dark) {
+    --bg: #0F1116; --surface: #171A21; --surface-2: #1D202A; --border: #2A2E39;
+    --text: #E7E5DD; --text-dim: #8D909B; --accent: #E5A25A; --accent-ink: #F3D4A8;
+    --ok: #4FB3A2; --ok-bg: #16261F; --warn: #DB7B65; --warn-bg: #2A1B18;
+    --neutral-chip: #262A34; --rail-bg: #0A0C10; --rail-text: #D8D6CE; --rail-text-dim: #6D707A;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.4);
+  }}
+  :root[data-theme="dark"] {
+    --bg: #0F1116; --surface: #171A21; --surface-2: #1D202A; --border: #2A2E39;
+    --text: #E7E5DD; --text-dim: #8D909B; --accent: #E5A25A; --accent-ink: #F3D4A8;
+    --ok: #4FB3A2; --ok-bg: #16261F; --warn: #DB7B65; --warn-bg: #2A1B18;
+    --neutral-chip: #262A34; --rail-bg: #0A0C10; --rail-text: #D8D6CE; --rail-text-dim: #6D707A;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.4);
+  }
+  *{box-sizing:border-box;}
+  @media (prefers-reduced-motion: reduce){ *{animation-duration:0.001ms !important; transition-duration:0.001ms !important;} }
+  html,body{height:100%;}
+  body{ margin:0; background:var(--bg); color:var(--text); font-family:"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; font-size:14px; line-height:1.5; }
+  .num, .mono{ font-family:"IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace; font-variant-numeric: tabular-nums; }
+  .shell{ display:grid; grid-template-columns: 260px 1fr; min-height:100vh; }
+  .rail{ background:var(--rail-bg); color:var(--rail-text); padding:20px 16px; display:flex; flex-direction:column; gap:20px; }
+  .brand{ display:flex; align-items:baseline; gap:8px; }
+  .brand-mark{ width:9px;height:9px;border-radius:2px; background:var(--accent); flex:none; transform: translateY(-1px); }
+  .brand-name{ font-weight:600; font-size:14.5px; letter-spacing:0.01em; color:#F3F1E9; }
+  .brand-sub{ font-size:11px; color:var(--rail-text-dim); margin-top:-14px; padding-left:17px; }
+  .filter-group{display:flex; flex-direction:column; gap:6px;}
+  .filter-label{ font-size:10.5px; text-transform:uppercase; letter-spacing:0.08em; color:var(--rail-text-dim); font-weight:600; }
+  .filter-input{ background:var(--rail-active); border:1px solid #2A2E38; color:var(--rail-text); border-radius:6px; padding:7px 9px; font-size:12.5px; font-family:"IBM Plex Mono", monospace; width:100%; }
+  .filter-input::placeholder{color:var(--rail-text-dim);}
+  .filter-input:focus{outline:2px solid var(--accent); outline-offset:1px;}
+  .filter-btn{ background:var(--accent); color:#1A1206; border:none; border-radius:6px; padding:7px 9px; font-size:12px; font-weight:600; cursor:pointer; }
+  .filter-btn:hover{opacity:0.9;}
+  .chip-row{display:flex; flex-wrap:wrap; gap:6px;}
+  .quick-chip{ background:var(--rail-active); color:var(--rail-text-dim); border:1px solid #2A2E38; border-radius:99px; padding:4px 10px; font-size:11.5px; cursor:pointer; }
+  .quick-chip:hover{color:var(--rail-text); border-color:var(--accent);}
+  .quick-chip.active{color:#1A1206; background:var(--accent); border-color:var(--accent);}
+  .quick-chip:focus-visible{outline:2px solid var(--accent); outline-offset:1px;}
+  .rail-divider{height:1px; background:#232730; margin:2px 0;}
+  .session-card{ background:var(--rail-active); border:1px solid #262A34; border-radius:9px; padding:11px 12px 12px; }
+  .session-card-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:7px;}
+  .session-live-dot{ width:6px; height:6px; border-radius:50%; background:var(--ok); box-shadow:0 0 0 3px rgba(79,179,162,0.18); }
+  .session-live-dot.inactive{background:var(--text-dim); box-shadow:none;}
+  .session-id{font-size:12.5px; color:#F3F1E9; margin-bottom:9px; word-break:break-all;}
+  .session-bar-track{height:4px; background:#262A34; border-radius:99px; overflow:hidden; margin-bottom:7px;}
+  .session-bar-fill{height:100%; background:var(--accent); border-radius:99px;}
+  .session-time-left{font-size:11px; color:var(--rail-text-dim);}
+  .rail-foot{ margin-top:auto; font-size:11px; color:var(--rail-text-dim); line-height:1.6; }
+  .rail-foot b{color:var(--rail-text);}
+  .main{padding:26px 34px 60px; max-width:1180px;}
+  .topbar{ display:flex; align-items:flex-end; justify-content:space-between; margin-bottom:18px; gap:16px; flex-wrap:wrap; }
+  .page-title{font-size:20px; font-weight:600; letter-spacing:-0.01em; text-wrap:balance;}
+  .page-sub{color:var(--text-dim); font-size:12.5px; margin-top:3px;}
+  .table-card{ background:var(--surface); border:1px solid var(--border); border-radius:12px; box-shadow:var(--shadow); overflow:hidden; }
+  table{width:100%; border-collapse:collapse;}
+  thead th{ text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-dim); font-weight:600; padding:11px 14px; border-bottom:1px solid var(--border); background:var(--surface-2); }
+  tbody td{padding:12px 14px; border-bottom:1px solid var(--border); vertical-align:middle;}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr{cursor:pointer;}
+  tbody tr:hover{background:var(--surface-2);}
+  tbody tr:focus-visible{outline:2px solid var(--accent); outline-offset:-2px;}
+  .q-cell{max-width:340px;}
+  .q-text{font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;}
+  .q-meta{color:var(--text-dim); font-size:11.5px; margin-top:2px;}
+  .status-pill{ display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; padding:3px 9px 3px 7px; border-radius:99px; }
+  .status-pill .dot{width:6px; height:6px; border-radius:50%;}
+  .status-answered{background:var(--ok-bg); color:var(--ok);}
+  .status-answered .dot{background:var(--ok);}
+  .status-clarify{background:var(--neutral-chip); color:var(--text-dim);}
+  .status-clarify .dot{background:var(--text-dim);}
+  .status-refused{background:var(--warn-bg); color:var(--warn);}
+  .status-refused .dot{background:var(--warn);}
+  .route-tag{ font-size:11px; font-family:"IBM Plex Mono",monospace; color:var(--text-dim); background:var(--surface-2); border:1px solid var(--border); border-radius:5px; padding:2px 6px; }
+  .legacy-tag{ font-size:10.5px; font-weight:600; color:var(--accent-ink); background:var(--surface-2); border:1px dashed var(--border); border-radius:5px; padding:2px 6px; }
+  .detail-grid{display:grid; grid-template-columns: 1fr 300px; gap:18px; align-items:start;}
+  @media (max-width: 900px){ .detail-grid{grid-template-columns:1fr;} }
+  .card{ background:var(--surface); border:1px solid var(--border); border-radius:12px; box-shadow:var(--shadow); padding:18px 20px; }
+  .card + .card{margin-top:16px;}
+  .card-title{ font-size:12px; text-transform:uppercase; letter-spacing:0.06em; font-weight:600; color:var(--text-dim); margin:0 0 14px; }
+  .qa-raw{font-size:11.5px; color:var(--text-dim); margin-bottom:3px;}
+  .qa-resolved{font-size:16px; font-weight:600; text-wrap:balance;}
+  .meta-strip{ display:flex; flex-wrap:wrap; gap:8px 18px; margin-top:12px; font-size:12px; color:var(--text-dim); }
+  .meta-strip b{color:var(--text); font-family:"IBM Plex Mono", monospace; font-weight:600;}
+  .path-strip{display:flex; align-items:center; flex-wrap:wrap; gap:0;}
+  .path-chip{ display:flex; align-items:center; gap:6px; font-size:11.5px; font-weight:500; padding:6px 11px; border-radius:7px; background:var(--surface-2); color:var(--text-dim); border:1px solid var(--border); white-space:nowrap; margin-bottom:6px; }
+  .path-chip.ran{color:var(--text); border-color:transparent;}
+  .path-chip.hit{background:var(--ok-bg); color:var(--ok);}
+  .path-chip.skip{opacity:0.5; text-decoration:line-through;}
+  .path-arrow{color:var(--text-dim); margin:0 4px; font-size:12px;}
+  .timeline{display:flex; flex-direction:column; gap:9px;}
+  .tl-row{display:grid; grid-template-columns: 150px 1fr 74px; align-items:center; gap:10px;}
+  .tl-label{font-size:12px; font-weight:500; text-transform:capitalize;}
+  .tl-track{position:relative; height:20px; background:var(--surface-2); border-radius:5px; overflow:hidden;}
+  .tl-bar{position:absolute; top:0; bottom:0; left:0; border-radius:5px; opacity:0.92; background:var(--accent);}
+  .tl-dur{font-size:11.5px; text-align:right; color:var(--text-dim);}
+  .tl-dur b{color:var(--text);}
+  .kv-row{display:flex; justify-content:space-between; align-items:baseline; padding:6px 0; border-bottom:1px dashed var(--border); font-size:12.5px;}
+  .kv-row:last-child{border-bottom:none;}
+  .kv-row .k{color:var(--text-dim);}
+  .kv-row .v{font-family:"IBM Plex Mono",monospace; font-weight:600;}
+  .kv-total{border-top:1px solid var(--border); margin-top:4px; padding-top:9px; font-weight:600;}
+  .kv-total .v{color:var(--accent-ink); font-size:13.5px;}
+  .llm-call{ border:1px solid var(--border); border-radius:8px; padding:9px 11px; margin-bottom:8px; }
+  .llm-call:last-child{margin-bottom:0;}
+  .llm-call-head{display:flex; justify-content:space-between; font-size:12px; font-weight:600; margin-bottom:5px;}
+  .llm-call-model{font-size:10.5px; color:var(--text-dim); font-family:"IBM Plex Mono",monospace;}
+  .llm-call-tok{display:flex; gap:12px; font-size:11px; color:var(--text-dim); font-family:"IBM Plex Mono",monospace; flex-wrap:wrap;}
+  details.chunk-detail{border:1px solid var(--border); border-radius:8px; padding:9px 11px; margin-bottom:7px;}
+  details.chunk-detail:last-child{margin-bottom:0;}
+  details.chunk-detail summary{cursor:pointer; font-size:12px; font-weight:500; list-style:none; display:flex; justify-content:space-between; align-items:center;}
+  details.chunk-detail summary::-webkit-details-marker{display:none;}
+  details.chunk-detail summary::after{content:"+"; color:var(--text-dim); font-size:14px;}
+  details.chunk-detail[open] summary::after{content:"\2212";}
+  .chunk-body{margin-top:8px; font-size:11.5px; color:var(--text-dim); line-height:1.55; word-break:break-word;}
+  .chunk-body .score{color:var(--text); font-family:"IBM Plex Mono",monospace;}
+  .back-link{ display:inline-flex; align-items:center; gap:5px; font-size:12px; color:var(--text-dim); background:none; border:none; cursor:pointer; padding:0; margin-bottom:14px; font:inherit; }
+  .back-link:hover{color:var(--text);}
+  .fu-verdict{display:flex; align-items:center; gap:9px; margin-bottom:12px; flex-wrap:wrap;}
+  .fu-reason{color:var(--text-dim); font-size:12.5px;}
+  .fu-turns{display:flex; flex-direction:column; gap:8px; margin-top:10px;}
+  .fu-turn{border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:12px; white-space:pre-wrap;}
+  .chunk-slot-note{ font-size:11.5px; color:var(--text-dim); background:var(--surface-2); border:1px dashed var(--border); border-radius:7px; padding:8px 10px; margin-top:2px; }
+  .legacy-banner{ background:var(--surface-2); border:1px dashed var(--border); border-radius:9px; padding:12px 14px; font-size:12.5px; color:var(--text-dim); margin-bottom:16px; }
+  .legacy-banner b{color:var(--text);}
+  .empty-state{padding:60px 20px; text-align:center; color:var(--text-dim); font-size:13px;}
+  .hidden{display:none !important;}
+  .loading-row td{color:var(--text-dim); font-size:12.5px; text-align:center; padding:24px;}
+  .prompt-block{
+    background:var(--ink-950); color:#D8D6CE; font-family:"IBM Plex Mono",monospace;
+    font-size:11px; line-height:1.6; padding:12px 14px; border-radius:8px;
+    max-height:420px; overflow:auto; white-space:pre-wrap; word-break:break-word; margin-top:8px;
+  }
+  :root:not([data-theme="light"]) { @media (prefers-color-scheme: dark) { .prompt-block{ background:#05060a; } } }
+  :root[data-theme="dark"] .prompt-block{ background:#05060a; }
+  .chunk-item{border:1px solid var(--border); border-radius:8px; padding:9px 11px; margin-bottom:7px;}
+  .chunk-item:last-child{margin-bottom:0;}
+  .chunk-item-head{display:flex; justify-content:space-between; align-items:baseline; gap:8px; font-size:11.5px; margin-bottom:5px; flex-wrap:wrap;}
+  .chunk-item-head .loc{color:var(--text-dim);}
+  .chunk-item-head .score{font-family:"IBM Plex Mono",monospace; font-weight:600; color:var(--accent-ink);}
+  .chunk-item-text{font-size:11.5px; color:var(--text-dim); line-height:1.55; max-height:140px; overflow:auto;}
+  .subcard-title{font-size:11px; text-transform:uppercase; letter-spacing:0.05em; font-weight:600; color:var(--text-dim); margin:12px 0 6px;}
+  .subcard-title:first-child{margin-top:0;}
+  .fallback-row{display:flex; justify-content:space-between; font-size:11.5px; padding:4px 0; border-bottom:1px dashed var(--border);}
+  .fallback-row:last-child{border-bottom:none;}
+  .key-modal-overlay{
+    position:fixed; inset:0; background:rgba(15,17,22,0.6); display:flex;
+    align-items:center; justify-content:center; z-index:100; padding:20px;
+  }
+  .key-modal{
+    background:var(--surface); border:1px solid var(--border); border-radius:12px;
+    box-shadow:var(--shadow); padding:20px 22px; width:100%; max-width:380px;
+  }
+  .key-modal .filter-input{color:var(--text); font-family:"IBM Plex Mono",monospace;}
+  .overlay-btn{ margin-top:6px; background:var(--surface-2); border:1px solid var(--border); color:var(--accent-ink); font-size:11px; font-weight:600; padding:5px 10px; border-radius:6px; cursor:pointer; display:inline-flex; align-items:center; gap:5px; font-family:inherit; }
+  .overlay-btn:hover{border-color:var(--accent);}
+  .llm-call-output{margin-top:10px; padding-top:10px; border-top:1px dashed var(--border);}
+  .text-overlay{ position:fixed; inset:0; background:rgba(15,17,22,0.7); display:flex; align-items:center; justify-content:center; z-index:200; padding:28px; }
+  .text-overlay-panel{ background:var(--surface); border:1px solid var(--border); border-radius:12px; box-shadow:var(--shadow); width:100%; max-width:1080px; height:100%; max-height:calc(100vh - 56px); display:flex; flex-direction:column; overflow:hidden; }
+  .text-overlay-head{ display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid var(--border); gap:12px; flex:none; }
+  .text-overlay-title{font-size:13px; font-weight:600;}
+  .text-overlay-meta{font-size:11px; color:var(--text-dim); font-family:"IBM Plex Mono",monospace; margin-top:2px;}
+  .text-overlay-close{ background:var(--surface-2); border:1px solid var(--border); border-radius:6px; width:28px; height:28px; cursor:pointer; color:var(--text-dim); font-size:16px; line-height:1; flex:none; }
+  .text-overlay-close:hover{color:var(--text); border-color:var(--accent);}
+  .text-overlay-body{flex:1; overflow:auto; padding:16px 18px; background:var(--ink-950);}
+  .text-overlay-body pre{margin:0; white-space:pre-wrap; word-break:break-word; font-family:"IBM Plex Mono",monospace; font-size:12px; line-height:1.65; color:#D8D6CE;}
+  :root:not([data-theme="light"]) { @media (prefers-color-scheme: dark) { .text-overlay-body{ background:#05060a; } } }
+  :root[data-theme="dark"] .text-overlay-body{background:#05060a;}
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside class="rail">
+    <div>
+      <div class="brand"><span class="brand-mark"></span><span class="brand-name">Chaduvu Guru</span></div>
+      <div class="brand-sub">Pipeline Trace Inspector</div>
+    </div>
+
+    <div class="filter-group">
+      <label class="filter-label" for="f-tracker">Tracker ID (login session)</label>
+      <input class="filter-input" id="f-tracker" placeholder="trk_...">
+    </div>
+    <div class="filter-group">
+      <label class="filter-label" for="f-uid">Student UID</label>
+      <input class="filter-input" id="f-uid" placeholder="uid...">
+    </div>
+    <button class="filter-btn" id="apply-filters">Apply filters</button>
+    <button class="quick-chip" id="clear-filters" style="align-self:flex-start;">Clear</button>
+
+    <div class="rail-divider"></div>
+
+    <div class="filter-group">
+      <span class="filter-label">Quick filters</span>
+      <div class="chip-row" id="quick-chips">
+        <button class="quick-chip" type="button" data-filter="cache_miss">Cache misses</button>
+        <button class="quick-chip" type="button" data-filter="refused">Refused</button>
+        <button class="quick-chip" type="button" data-filter="followup">Follow-ups</button>
+        <button class="quick-chip" type="button" data-filter="legacy">Legacy only</button>
+      </div>
+    </div>
+
+    <div class="rail-divider"></div>
+
+    <div class="session-card" id="rail-session">
+      <div class="session-card-head">
+        <span class="filter-label" style="color:var(--rail-text-dim);">Tracker status</span>
+        <span class="session-live-dot inactive" id="rail-dot"></span>
+      </div>
+      <div class="session-id mono" id="rail-tracker-id">Enter a UID to check</div>
+      <div class="session-bar-track"><div class="session-bar-fill" id="rail-session-bar" style="width:0%"></div></div>
+      <div class="session-time-left" id="rail-time-left">&nbsp;</div>
+    </div>
+
+    <div class="rail-foot">
+      Showing recent activity across <b>all students</b> by default &mdash;<br>
+      narrow by tracker/uid only when you need one thread.
+    </div>
+  </aside>
+
+  <main class="main">
+    <section id="view-list">
+      <div class="topbar">
+        <div>
+          <h1 class="page-title">Recent questions</h1>
+          <div class="page-sub" id="list-sub">Loading&hellip;</div>
+        </div>
+      </div>
+      <div class="table-card">
+        <table>
+          <thead>
+            <tr>
+              <th>Time</th><th>Question</th><th>Route</th><th>Status</th>
+              <th>Duration</th><th>Tokens</th><th>Cost</th>
+            </tr>
+          </thead>
+          <tbody id="list-body">
+            <tr class="loading-row"><td colspan="7">Loading pipeline logs&hellip;</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="view-detail" class="hidden">
+      <button class="back-link" id="back-btn">&larr; All requests</button>
+      <div id="detail-root"></div>
+    </section>
+  </main>
+</div>
+
+<div class="key-modal-overlay hidden" id="key-modal-overlay">
+  <form class="key-modal" id="key-modal-form">
+    <p class="card-title" style="margin-bottom:8px;">Pipeline logs access key</p>
+    <p style="font-size:12.5px; color:var(--text-dim); margin:0 0 14px;">This dashboard shows raw student questions and full LLM prompts - enter the shared key configured on the server (<span class="mono">PIPELINE_LOGS_KEY</span>).</p>
+    <input class="filter-input" id="key-modal-input" style="color:var(--text); background:var(--surface-2); border-color:var(--border);" placeholder="access key" autocomplete="off">
+    <button class="filter-btn" type="submit" style="margin-top:12px; width:100%;">Continue</button>
+  </form>
+</div>
+
+<div class="text-overlay hidden" id="text-overlay">
+  <div class="text-overlay-panel">
+    <div class="text-overlay-head">
+      <div>
+        <div class="text-overlay-title" id="text-overlay-title">&mdash;</div>
+        <div class="text-overlay-meta" id="text-overlay-meta"></div>
+      </div>
+      <button type="button" class="text-overlay-close" id="text-overlay-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="text-overlay-body"><pre id="text-overlay-body"></pre></div>
+  </div>
+</div>
+
+<script>
+const API_BASE = "";
+const ACCESS_KEY_STORAGE = "pipeline_logs_access_key";
+let allRows = [];
+let activeQuickFilter = null;
+let accessKey = localStorage.getItem(ACCESS_KEY_STORAGE) || "";
+
+// This dashboard reads raw student questions and full LLM prompt text
+// (prompt_sent) - every call to the pipeline-logs API must carry the
+// shared key set server-side as PIPELINE_LOGS_KEY (checked by
+// verify_pipeline_logs_key in backend/app/api/routes/pipeline_logs.py).
+// Deliberately NOT a full login flow - this is meant to stay a quick
+// internal viewer, just enough to keep the URL from being wide open.
+function authedFetch(url) {
+  return fetch(url, { headers: accessKey ? { 'X-Pipeline-Logs-Key': accessKey } : {} });
+}
+
+function promptForKey() {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('key-modal-overlay');
+    const form = document.getElementById('key-modal-form');
+    const input = document.getElementById('key-modal-input');
+    overlay.classList.remove('hidden');
+    input.value = '';
+    input.focus();
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      accessKey = input.value.trim();
+      localStorage.setItem(ACCESS_KEY_STORAGE, accessKey);
+      overlay.classList.add('hidden');
+      resolve(accessKey);
+    };
+  });
+}
+
+const listView = document.getElementById('view-list');
+const detailView = document.getElementById('view-detail');
+const listBody = document.getElementById('list-body');
+const listSub = document.getElementById('list-sub');
+
+function fmtTime(row) {
+  const ts = row.timestamp;
+  if (typeof ts === 'string') {
+    const d = new Date(ts);
+    if (!isNaN(d)) return d.toLocaleString();
+  }
+  if (ts && typeof ts === 'object' && ts._seconds) return new Date(ts._seconds * 1000).toLocaleString();
+  const m = (row.request_id || '').match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}:${m[6]}`;
+  return row.legacy ? '(legacy, no timestamp)' : '—';
+}
+
+function statusPill(status) {
+  const cls = status === 'ANSWERED' ? 'status-answered' : (status === 'REFUSED' ? 'status-refused' : 'status-clarify');
+  const label = (status || 'UNKNOWN').replace(/_/g, ' ');
+  return `<span class="status-pill ${cls}"><span class="dot"></span>${label}</span>`;
+}
+
+async function loadList() {
+  const trackerId = document.getElementById('f-tracker').value.trim();
+  const uid = document.getElementById('f-uid').value.trim();
+  const params = new URLSearchParams();
+  if (trackerId) params.set('tracker_id', trackerId);
+  if (uid) params.set('uid', uid);
+  params.set('limit', '100');
+
+  listBody.innerHTML = '<tr class="loading-row"><td colspan="7">Loading pipeline logs&hellip;</td></tr>';
+  try {
+    const res = await authedFetch(`${API_BASE}/api/admin/pipeline-logs?${params.toString()}`);
+    if (res.status === 403) {
+      localStorage.removeItem(ACCESS_KEY_STORAGE);
+      accessKey = "";
+      listBody.innerHTML = '<tr class="loading-row"><td colspan="7">Wrong or missing access key. <a href="#" id="retry-key-link">Click to try again</a>.</td></tr>';
+      document.getElementById('retry-key-link').addEventListener('click', async (e) => { e.preventDefault(); await promptForKey(); loadList(); });
+      return;
+    }
+    if (res.status === 503) {
+      listBody.innerHTML = '<tr class="loading-row"><td colspan="7">Server has no PIPELINE_LOGS_KEY configured - set it in .env and restart the backend.</td></tr>';
+      return;
+    }
+    const data = await res.json();
+    allRows = data.requests || [];
+    renderList();
+    if (uid) checkSession(uid); else resetSessionCard();
+  } catch (e) {
+    listBody.innerHTML = `<tr class="loading-row"><td colspan="7">Failed to load: ${e}</td></tr>`;
+  }
+}
+
+function applyQuickFilter(rows) {
+  if (!activeQuickFilter) return rows;
+  if (activeQuickFilter === 'cache_miss') return rows.filter(r => r.status === 'ANSWERED');
+  if (activeQuickFilter === 'refused') return rows.filter(r => r.status === 'REFUSED');
+  if (activeQuickFilter === 'followup') return rows.filter(r => r.route === 'FOLLOW_UP');
+  if (activeQuickFilter === 'legacy') return rows.filter(r => r.legacy);
+  return rows;
+}
+
+function renderList() {
+  const rows = applyQuickFilter(allRows);
+  listSub.textContent = `${rows.length} of ${allRows.length} request(s)`;
+  if (rows.length === 0) {
+    listBody.innerHTML = '<tr class="loading-row"><td colspan="7">No requests match these filters.</td></tr>';
+    return;
+  }
+  listBody.innerHTML = rows.map(r => {
+    const q = r.raw_question || '(no question text)';
+    const dur = r.total_duration_ms != null ? `${r.total_duration_ms.toLocaleString()} ms` : (r.legacy ? '— <span class="legacy-tag">legacy</span>' : '—');
+    const tok = r.total_tokens != null ? r.total_tokens.toLocaleString() : '—';
+    const cost = r.total_cost != null ? `$${r.total_cost.toFixed(6)}` : '—';
+    return `<tr tabindex="0" data-req="${r.request_id}">
+      <td class="mono" style="color:var(--text-dim); font-size:12px;">${fmtTime(r)}</td>
+      <td class="q-cell"><span class="q-text">"${escapeHtml(q)}"</span><span class="q-meta">${escapeHtml(r.uid || 'unknown uid')}</span></td>
+      <td><span class="route-tag">${r.route || (r.legacy ? 'legacy' : '—')}</span></td>
+      <td>${statusPill(r.status)}</td>
+      <td class="mono">${dur}</td>
+      <td class="mono">${tok}</td>
+      <td class="mono">${cost}</td>
+    </tr>`;
+  }).join('');
+
+  document.querySelectorAll('#list-body tr[data-req]').forEach(row => {
+    const open = () => openDetail(row.dataset.req);
+    row.addEventListener('click', open);
+    row.addEventListener('keydown', e => { if (e.key === 'Enter') open(); });
+  });
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Full-screen overlay for reading long prompt/output/chunk text - registered
+// text lives in this in-memory store (never in a DOM attribute) since it can
+// run to tens of thousands of chars and contain quotes/newlines that would
+// break an inline attribute. Reset on every renderDetail() call.
+let overlayStore = {};
+function regText(text) {
+  const id = 'ov' + Object.keys(overlayStore).length + '_' + Math.random().toString(36).slice(2, 8);
+  overlayStore[id] = text || '';
+  return id;
+}
+function openTextOverlay(title, text) {
+  document.getElementById('text-overlay-title').textContent = title;
+  document.getElementById('text-overlay-meta').textContent = `${(text || '').length.toLocaleString()} characters`;
+  document.getElementById('text-overlay-body').textContent = text || '(empty)';
+  document.getElementById('text-overlay').classList.remove('hidden');
+}
+function closeTextOverlay() {
+  document.getElementById('text-overlay').classList.add('hidden');
+}
+function overlayBtn(id, label, title) {
+  return `<button type="button" class="overlay-btn" data-ov="${id}" data-ov-title="${escapeHtml(title)}">&#10021; ${escapeHtml(label)}</button>`;
+}
+
+async function openDetail(requestId) {
+  detailView.classList.remove('hidden');
+  listView.classList.add('hidden');
+  document.getElementById('detail-root').innerHTML = '<div class="empty-state">Loading request detail&hellip;</div>';
+  window.scrollTo(0, 0);
+  try {
+    const res = await authedFetch(`${API_BASE}/api/admin/pipeline-logs/${encodeURIComponent(requestId)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const record = await res.json();
+    renderDetail(record);
+  } catch (e) {
+    document.getElementById('detail-root').innerHTML = `<div class="empty-state">Failed to load ${requestId}: ${e}</div>`;
+  }
+}
+
+const CANONICAL_STAGES = [
+  ['safety_layer1', 'Safety'], ['safety_layer2', 'Safety'], ['safety_layer3', 'Safety'],
+  ['understanding_llm', 'Understanding'], ['global_cache_check', 'Global cache'],
+  ['curriculum_decision', 'Curriculum check'], ['rag_fetch', 'RAG fetch'],
+  ['answer_generation', 'Answer gen'], ['save', 'Save'],
+];
+
+function stageByName(stages, name) {
+  return (stages || []).find(s => s.stage === name);
+}
+
+function renderChunkList(chunks) {
+  if (!chunks || chunks.length === 0) return '<div class="chunk-slot-note">No chunks.</div>';
+  return chunks.map((c, i) => {
+    const fullText = c.text || '';
+    const title = `Chunk #${i + 1} — ${c.chapter || '(no chapter)'}${c.topic ? ' · ' + c.topic : ''} (p.${c.page ?? '?'})`;
+    const id = regText(fullText);
+    return `<div class="chunk-item">
+    <div class="chunk-item-head">
+      <span><b>#${i + 1}</b> ${escapeHtml(c.chapter || '(no chapter)')} ${c.topic ? '&middot; ' + escapeHtml(c.topic) : ''}</span>
+      <span class="loc">p.${c.page ?? '?'}</span>
+      <span class="score">score ${c.score != null ? Number(c.score).toFixed(2) : '?'}</span>
+    </div>
+    <div class="chunk-item-text">${escapeHtml(fullText.slice(0, 600))}${fullText.length > 600 ? '…' : ''}</div>
+    ${fullText ? overlayBtn(id, `View full chunk (${fullText.length.toLocaleString()} chars)`, title) : ''}
+  </div>`;
+  }).join('');
+}
+
+function renderDetail(r) {
+  overlayStore = {};
+  const stages = r.stages || [];
+  const llmCalls = r.llm_calls || [];
+  const understandingCall = llmCalls.find(c => c.stage === 'understanding');
+
+  const legacyBanner = r.legacy ? `<div class="legacy-banner"><b>Pre-instrumentation record.</b> This question was migrated from older history saved before this log report existed — stage timings, tokens, and follow-up/chunk-cache detail were never captured for it, so those sections show as unavailable rather than a fabricated number.</div>` : '';
+
+  const pathStrip = (() => {
+    const chips = [];
+    CANONICAL_STAGES.forEach(([name, label], i) => {
+      const s = stageByName(stages, name);
+      if (name === 'safety_layer3' && !s) return; // only shown when it actually ran
+      if (name === 'curriculum_decision' && !s) return;
+      if (!s) {
+        if (r.legacy) return;
+        chips.push(`<span class="path-chip skip">${label}</span>`);
+        return;
+      }
+      let text = label;
+      let cls = 'path-chip ran';
+      if (name === 'rag_fetch') {
+        if (s.chunk_cache_action === 'reused_session_cache') { cls += ' hit'; text = `${label} ✓ reused session chunks`; }
+        else { text = `${label} (fresh search)`; }
+      }
+      if (name === 'global_cache_check') text = `${label} (${s.result || '?'})`;
+      chips.push(`<span class="${cls}">${text}</span>`);
+    });
+    return chips.join('<span class="path-arrow">&rarr;</span>');
+  })();
+
+  const timelineHtml = stages.length === 0
+    ? `<div class="chunk-slot-note">No stage timing available${r.legacy ? ' (pre-instrumentation record)' : ''}.</div>`
+    : stages.map(s => {
+        const pct = r.total_duration_ms ? Math.max(2, Math.round((s.duration_ms / r.total_duration_ms) * 100)) : 0;
+        return `<div class="tl-row">
+          <div class="tl-label">${s.stage.replace(/_/g, ' ')}</div>
+          <div class="tl-track"><div class="tl-bar" style="width:${pct}%"></div></div>
+          <div class="tl-dur"><b>${s.duration_ms.toLocaleString()} ms</b></div>
+        </div>`;
+      }).join('');
+
+  const followupHtml = (() => {
+    if (r.legacy) return `<div class="chunk-slot-note">Follow-up detection detail not available for pre-instrumentation records.</div>`;
+    const verdictPill = r.is_follow_up
+      ? '<span class="status-pill status-answered"><span class="dot"></span>Follow-up</span>'
+      : '<span class="status-pill status-clarify"><span class="dot"></span>New topic</span>';
+    const reason = r.resolution_reason || '(no reason captured)';
+    let turnsHtml = '';
+    if (understandingCall && understandingCall.conversation_summary_sent) {
+      turnsHtml = `<div class="fu-turns"><div class="fu-turn">${escapeHtml(understandingCall.conversation_summary_sent)}</div></div>`;
+    }
+    const ragStage = stageByName(stages, 'rag_fetch');
+    const chunkNote = ragStage && ragStage.chunk_cache_note
+      ? ragStage.chunk_cache_note
+      : (ragStage ? `Action: ${ragStage.chunk_cache_action || 'n/a'}, ${ragStage.chunk_cache_chunk_count || 0} chunk(s).` : 'No RAG fetch ran for this request (non-curriculum answer).');
+    return `<div class="fu-verdict">${verdictPill}<span class="fu-reason">${escapeHtml(reason)}</span></div>${turnsHtml}
+      <div class="chunk-slot-note" style="margin-top:10px;"><b style="color:var(--text);">Topic-chunk cache slot:</b> ${escapeHtml(chunkNote)}</div>`;
+  })();
+
+  const cacheDetailHtml = (() => {
+    const parts = [];
+    const gcc = stageByName(stages, 'global_cache_check');
+    if (gcc) {
+      parts.push(`<details class="chunk-detail" open><summary>Global answer cache &middot; <span style="color:${gcc.result === 'hit' ? 'var(--ok)' : 'var(--warn)'}; font-weight:600;">${gcc.result}</span></summary>
+        <div class="chunk-body">key = ${escapeHtml(JSON.stringify(gcc.cache_key || {}))}</div></details>`);
+    }
+    if (understandingCall) {
+      const curriculumData = understandingCall.curriculum_data_sent || '';
+      const curriculumId = regText(curriculumData);
+      parts.push(`<details class="chunk-detail"><summary>Curriculum metadata cache (Stage 2) &middot; <span style="color:var(--ok); font-weight:600;">${understandingCall.curriculum_cache_load_ms ?? '?'} ms</span></summary>
+        <div class="chunk-body">source: ${escapeHtml(understandingCall.curriculum_cache_source || 'unknown')}
+        <div class="chunk-slot-note" style="margin-top:8px;">Not a separate LLM call and not a separate token cost - this is the chapter-titles/summaries text embedded directly into the <b style="color:var(--text);">understanding</b> call's own prompt below, so its subject/chapter/topic guess is grounded in real curriculum content.</div>
+        <details style="margin-top:8px;"><summary style="cursor:pointer; color:var(--accent-ink);">View exact curriculum data sent (${curriculumData.length.toLocaleString()} chars)</summary>
+        <div class="prompt-block">${escapeHtml(curriculumData || '(none)')}</div></details>
+        ${curriculumData ? overlayBtn(curriculumId, 'View full screen', 'Curriculum metadata sent to Stage 2') : ''}
+        </div></details>`);
+    }
+    const cd = stageByName(stages, 'curriculum_decision');
+    if (cd) {
+      let fallbackHtml = '';
+      if (cd.fallback_candidates && cd.fallback_candidates.length) {
+        fallbackHtml = `<div class="subcard-title">Every book tried (multi-book fallback)</div>` +
+          cd.fallback_candidates.map(f => `<div class="fallback-row"><span>${escapeHtml(f.subject)}</span><span>${f.confidence_tier || 'n/a'} &middot; score ${f.top_score != null ? Number(f.top_score).toFixed(2) : '?'} &middot; ${f.chunk_count} chunk(s)</span></div>`).join('');
+      }
+      parts.push(`<details class="chunk-detail" open><summary>Curriculum match &middot; <span style="font-weight:600;">${cd.curriculum_match}</span></summary>
+        <div class="chunk-body">confidence_tier: <span class="score">${cd.confidence_tier || 'n/a'}</span>
+        ${fallbackHtml}
+        <div class="subcard-title">Chunks considered for this decision</div>
+        ${renderChunkList(cd.chunks_considered)}
+        </div></details>`);
+    }
+    if (parts.length === 0) parts.push(`<div class="chunk-slot-note">No cache/retrieval detail available${r.legacy ? ' (pre-instrumentation record)' : ''}.</div>`);
+    return parts.join('');
+  })();
+
+  const chunksUsedHtml = (() => {
+    const rf = stageByName(stages, 'rag_fetch');
+    if (!rf) return `<div class="chunk-slot-note">No RAG fetch ran for this request (non-curriculum answer, or refused/clarification exit).</div>`;
+    const sourceNote = rf.chunk_cache_action === 'reused_session_cache'
+      ? '<span style="color:var(--ok); font-weight:600;">reused from session cache</span>'
+      : '<span style="color:var(--accent-ink); font-weight:600;">freshly searched</span>';
+    return `<div class="chunk-slot-note" style="margin-bottom:10px;">These chunks were ${sourceNote} and are exactly what went into the answer-generation prompt below.</div>${renderChunkList(rf.chunks_used)}`;
+  })();
+
+  const finalAnswerHtml = (() => {
+    if (r.final_answer) {
+      const id = regText(r.final_answer);
+      const preview = r.final_answer.length > 400 ? r.final_answer.slice(0, 400) + '…' : r.final_answer;
+      return `<div class="prompt-block" style="background:var(--surface-2); color:var(--text); max-height:200px;">${escapeHtml(preview)}</div>${overlayBtn(id, 'View full answer', 'Final answer delivered to student')}`;
+    }
+    // final_answer key exists (empty string) on any record captured after
+    // 2026-09-01, vs. genuinely absent on older records - distinguish those
+    // rather than calling a legitimate empty video-only answer "not captured".
+    if ('final_answer' in r) {
+      const isVideoFormat = /VIDEO/i.test(r.format_decision || '');
+      const note = r.format_decision
+        ? (isVideoFormat
+            ? ` - format_decision was <b style="color:var(--text);">${escapeHtml(r.format_decision)}</b> (a video/visual response, so no text_narration is expected).`
+            : ` - format_decision was <b style="color:var(--text);">${escapeHtml(r.format_decision)}</b>, which normally DOES carry text_narration. Worth checking the answer_generation output for why it came back empty.`)
+        : '.';
+      return `<div class="chunk-slot-note">The saved text answer for this request is empty${note}</div>`;
+    }
+    return `<div class="chunk-slot-note">Not captured for this record${r.legacy ? ' (pre-instrumentation record)' : ' (this record predates final-answer capture)'}.</div>`;
+  })();
+
+  // c.raw_output only exists on records logged after 2026-09-01 (the field
+  // was added to pipeline.py's finish() then - see raw_output on LLMCallResult
+  // in observability/llm_call.py, previously computed but never persisted).
+  // Older records fall back to whatever equivalent was already saved
+  // elsewhere in the top-level record, clearly labeled as reconstructed
+  // rather than the model's actual raw text.
+  function llmOutputHtml(c) {
+    let text = c.raw_output;
+    let note = '';
+    if (!text) {
+      if (c.stage === 'answer_generation' && r.final_answer) {
+        text = r.final_answer;
+        note = 'Reconstructed from the pipeline\'s saved final answer - this record predates raw per-call output capture.';
+      } else if (c.stage === 'understanding' && (r.resolved_question || r.subject || r.chapter_name || r.topic)) {
+        text = `resolved_question: ${r.resolved_question || '(n/a)'}\nsubject: ${r.subject || '(n/a)'}\nchapter: ${r.chapter_name || '(n/a)'}\ntopic: ${r.topic || '(n/a)'}`;
+        note = 'Reconstructed from parsed fields - the model\'s raw JSON output was not captured for this record.';
+      }
+    }
+    if (!text) {
+      return `<div class="llm-call-output"><div class="chunk-slot-note">No output captured for this call${r.legacy ? ' (pre-instrumentation record)' : ''}.</div></div>`;
+    }
+    const id = regText(text);
+    const preview = text.length > 280 ? text.slice(0, 280) + '…' : text;
+    return `<div class="llm-call-output">
+      <div class="subcard-title" style="margin-top:0;">Output</div>
+      ${note ? `<div class="chunk-slot-note" style="margin-bottom:6px;">${escapeHtml(note)}</div>` : ''}
+      <div class="prompt-block" style="max-height:160px;">${escapeHtml(preview)}</div>
+      ${overlayBtn(id, 'View full output', `${c.stage} — output`)}
+    </div>`;
+  }
+
+  const llmCallsHtml = llmCalls.length === 0
+    ? `<div class="chunk-slot-note">No LLM call detail available${r.legacy ? ' (pre-instrumentation record)' : ''}.</div>`
+    : llmCalls.map(c => {
+        const promptId = regText(c.prompt_sent || '');
+        return `<div class="llm-call">
+        <div class="llm-call-head"><span>${c.stage}</span><span class="llm-call-model">${c.model}${c.token_source === 'char_estimate_fallback' ? ' (estimated)' : ''}</span></div>
+        <div class="llm-call-tok"><span>in ${c.input_tokens ?? '?'}</span><span>out ${c.output_tokens ?? '?'}</span><span>${c.duration_ms ?? '?'} ms</span><span>$${(c.cost ?? 0).toFixed(6)}</span></div>
+        ${c.error ? `<div class="chunk-slot-note" style="margin-top:6px; color:var(--warn);">Error: ${escapeHtml(c.error)}</div>` : ''}
+        <details style="margin-top:8px;"><summary style="cursor:pointer; font-size:11.5px; color:var(--accent-ink);">View exact prompt sent (${(c.prompt_sent || '').length.toLocaleString()} chars)</summary>
+        <div class="prompt-block">${escapeHtml(c.prompt_sent || '(not captured)')}</div></details>
+        ${c.prompt_sent ? overlayBtn(promptId, 'View full screen', `${c.stage} — prompt sent`) : ''}
+        ${llmOutputHtml(c)}
+      </div>`;
+      }).join('');
+
+  document.getElementById('detail-root').innerHTML = `
+    ${legacyBanner}
+    <div class="detail-grid">
+      <div>
+        <div class="card">
+          <div class="qa-raw">Raw: "${escapeHtml(r.raw_question || '')}"</div>
+          <div class="qa-resolved">${escapeHtml(r.resolved_question || r.raw_question || '')}</div>
+          <div class="meta-strip">
+            <span>tracker <b>${r.tracker_id || '—'}</b></span>
+            <span>book session <b>${r.book_session_id || '—'}</b></span>
+            <span>uid <b>${r.uid || '—'}</b></span>
+            <span>request <b>${r.request_id}</b></span>
+          </div>
+        </div>
+        <div class="card"><p class="card-title">Final answer</p>${finalAnswerHtml}</div>
+        <div class="card"><p class="card-title">Path taken</p><div class="path-strip">${pathStrip || '<span class="chunk-slot-note">No path detail available.</span>'}</div></div>
+        <div class="card"><p class="card-title">Follow-up resolution</p>${followupHtml}</div>
+        <div class="card">
+          <p class="card-title">Stage timeline &middot; total <span class="mono" style="color:var(--text); text-transform:none; letter-spacing:0;">${r.total_duration_ms != null ? r.total_duration_ms.toLocaleString() + ' ms' : '—'}</span></p>
+          <div class="timeline">${timelineHtml}</div>
+        </div>
+        <div class="card"><p class="card-title">Cache &amp; retrieved content</p>${cacheDetailHtml}</div>
+        <div class="card"><p class="card-title">Chunks used for answer generation</p>${chunksUsedHtml}</div>
+      </div>
+      <div>
+        <div class="card"><p class="card-title">LLM calls</p>${llmCallsHtml}</div>
+        <div class="card">
+          <p class="card-title">Tokens &amp; cost</p>
+          <div class="kv-row"><span class="k">Total tokens</span><span class="v">${r.total_tokens != null ? r.total_tokens.toLocaleString() : '—'}</span></div>
+          <div class="kv-row kv-total"><span class="k">Total cost</span><span class="v">${r.total_cost != null ? '$' + r.total_cost.toFixed(6) : '—'}</span></div>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function checkSession(uid) {
+  try {
+    const res = await authedFetch(`${API_BASE}/api/admin/pipeline-logs/session/${encodeURIComponent(uid)}`);
+    const s = await res.json();
+    const dot = document.getElementById('rail-dot');
+    const idEl = document.getElementById('rail-tracker-id');
+    const bar = document.getElementById('rail-session-bar');
+    const timeLeft = document.getElementById('rail-time-left');
+    if (s.active) {
+      dot.classList.remove('inactive');
+      idEl.textContent = s.tracker_id;
+      const pct = Math.min(100, Math.round((s.hours_left / 24) * 100));
+      bar.style.width = pct + '%';
+      const h = Math.floor(s.hours_left);
+      const m = Math.round((s.hours_left - h) * 60);
+      timeLeft.textContent = `${h}h ${m}m left in this 24h window`;
+    } else {
+      resetSessionCard(`No active tracker for ${uid}`);
+    }
+  } catch (e) {
+    resetSessionCard('Failed to check session');
+  }
+}
+
+function resetSessionCard(msg) {
+  document.getElementById('rail-dot').classList.add('inactive');
+  document.getElementById('rail-tracker-id').textContent = msg || 'Enter a UID to check';
+  document.getElementById('rail-session-bar').style.width = '0%';
+  document.getElementById('rail-time-left').textContent = ' ';
+}
+
+document.getElementById('apply-filters').addEventListener('click', loadList);
+document.getElementById('clear-filters').addEventListener('click', () => {
+  document.getElementById('f-tracker').value = '';
+  document.getElementById('f-uid').value = '';
+  activeQuickFilter = null;
+  document.querySelectorAll('.quick-chip[data-filter]').forEach(c => c.classList.remove('active'));
+  loadList();
+});
+document.querySelectorAll('.quick-chip[data-filter]').forEach(chip => {
+  chip.addEventListener('click', () => {
+    const f = chip.dataset.filter;
+    activeQuickFilter = activeQuickFilter === f ? null : f;
+    document.querySelectorAll('.quick-chip[data-filter]').forEach(c => c.classList.toggle('active', c.dataset.filter === activeQuickFilter));
+    renderList();
+  });
+});
+document.getElementById('back-btn').addEventListener('click', () => {
+  detailView.classList.add('hidden');
+  listView.classList.remove('hidden');
+});
+document.getElementById('text-overlay-close').addEventListener('click', closeTextOverlay);
+document.getElementById('text-overlay').addEventListener('click', (e) => {
+  if (e.target.id === 'text-overlay') closeTextOverlay();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeTextOverlay();
+});
+document.getElementById('detail-root').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-ov]');
+  if (!btn) return;
+  openTextOverlay(btn.dataset.ovTitle || 'Full text', overlayStore[btn.dataset.ov] || '');
+});
+(async () => {
+  if (!accessKey) await promptForKey();
+  loadList();
+})();
+</script>
+</body>
+</html>

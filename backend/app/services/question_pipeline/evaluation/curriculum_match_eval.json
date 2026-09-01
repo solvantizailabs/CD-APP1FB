@@ -1,0 +1,44 @@
+{
+  "description": "Labeled eval set for tuning Stage 4's curriculum_match confidence-tier thresholds (rag_stage.decide_curriculum -> new_rag hybrid_retriever's HIGH/MEDIUM/LOW/INSUFFICIENT tiers). Built 2026-08-31 per real Class 10 CBSE ingested content (maths/science/social all confirmed to have real Qdrant content). Each case is a real, plausible student question with a ground-truth expected curriculum_match label, independent of any single model's guess.",
+  "grade": 10,
+  "cases": [
+    {"id": "direct_01", "question": "What is the discriminant formula in a quadratic equation?", "expected_subject": "maths", "expected_chapter_hint": "QUADRATIC EQUATIONS", "expected_curriculum_match": "in_grade", "category": "direct"},
+    {"id": "direct_02", "question": "What is Euclid's Division Algorithm?", "expected_subject": "maths", "expected_chapter_hint": "REAL NUMBERS", "expected_curriculum_match": "in_grade", "category": "direct"},
+    {"id": "direct_03", "question": "Explain the concept of similarity in triangles.", "expected_subject": "maths", "expected_chapter_hint": "TRIANGLES", "expected_curriculum_match": "in_grade", "category": "direct"},
+    {"id": "direct_04", "question": "What is a chemical equation and how do you balance it?", "expected_subject": "science", "expected_chapter_hint": "Chemical Reactions and Equations", "expected_curriculum_match": "in_grade", "category": "direct"},
+    {"id": "direct_05", "question": "What is the difference between metals and non-metals?", "expected_subject": "science", "expected_chapter_hint": "Metals and Non-metals", "expected_curriculum_match": "in_grade", "category": "direct"},
+    {"id": "direct_06", "question": "How does the human eye focus light to form an image?", "expected_subject": "science", "expected_chapter_hint": "The Human Eye and the Colourful World", "expected_curriculum_match": "in_grade", "category": "direct"},
+    {"id": "direct_07", "question": "What is the relationship between electric current and magnetism?", "expected_subject": "science", "expected_chapter_hint": "Magnetic Effects of Electric Current", "expected_curriculum_match": "in_grade", "category": "direct"},
+    {"id": "direct_08", "question": "What is meant by an ecosystem and what are its components?", "expected_subject": "science", "expected_chapter_hint": "Our Environment", "expected_curriculum_match": "in_grade", "category": "direct"},
+    {"id": "direct_09", "question": "What are the different types of resources based on how exhaustible they are?", "expected_subject": "social", "expected_chapter_hint": "DEVELOPMENT OF RESOURCES", "expected_curriculum_match": "in_grade", "category": "direct"},
+    {"id": "direct_10", "question": "What are the different farming methods practiced in India?", "expected_subject": "social", "expected_chapter_hint": "AGRICULTURE", "expected_curriculum_match": "in_grade", "category": "direct"},
+    {"id": "direct_11", "question": "What is the importance of the manufacturing sector in India's economy?", "expected_subject": "social", "expected_chapter_hint": "MANUFACTURING INDUSTRIES", "expected_curriculum_match": "in_grade", "category": "direct"},
+    {"id": "direct_12", "question": "What are the various means of transportation in India?", "expected_subject": "social", "expected_chapter_hint": "LIFELINES OF NATIONAL ECONOMY", "expected_curriculum_match": "in_grade", "category": "direct"},
+
+    {"id": "synonym_01", "question": "Why do acids turn blue litmus paper red?", "expected_subject": "science", "expected_chapter_hint": "Acids, Bases and Salts", "expected_curriculum_match": "in_grade", "category": "synonym_phrasing"},
+    {"id": "synonym_02", "question": "Why is water scarce in some regions even though most of the Earth is covered in it?", "expected_subject": "social", "expected_chapter_hint": "WATER RESOURCES", "expected_curriculum_match": "in_grade", "category": "synonym_phrasing"},
+    {"id": "synonym_03", "question": "How does light change direction when it passes from air into glass?", "expected_subject": "science", "expected_chapter_hint": "Light Reflection and Refraction", "expected_curriculum_match": "in_grade", "category": "synonym_phrasing"},
+
+    {"id": "comparison_01", "question": "Compare AC and DC electric current.", "expected_subject": "science", "expected_chapter_hint": "Electricity", "expected_curriculum_match": "in_grade", "category": "comparison"},
+    {"id": "comparison_02", "question": "What's the difference between renewable and non-renewable resources?", "expected_subject": "social", "expected_chapter_hint": "DEVELOPMENT OF RESOURCES", "expected_curriculum_match": "in_grade", "category": "comparison"},
+
+    {"id": "obscure_01", "question": "What is the sign convention used for spherical mirrors?", "expected_subject": "science", "expected_chapter_hint": "Light Reflection and Refraction", "expected_curriculum_match": "in_grade", "category": "obscure_subtopic"},
+    {"id": "obscure_02", "question": "How is the mean of grouped data calculated using the assumed mean method?", "expected_subject": "maths", "expected_chapter_hint": "STATISTICS", "expected_curriculum_match": "in_grade", "category": "obscure_subtopic"},
+    {"id": "obscure_03", "question": "What is meant by the ozone layer getting depleted?", "expected_subject": "science", "expected_chapter_hint": "Our Environment", "expected_curriculum_match": "in_grade", "category": "obscure_subtopic"},
+    {"id": "obscure_04", "question": "What is the difference between a sector and a segment of a circle?", "expected_subject": "maths", "expected_chapter_hint": "Areas of Sector and Segment of a Circle", "expected_curriculum_match": "in_grade", "category": "obscure_subtopic"},
+
+    {"id": "cross_adjacent_01", "question": "How is coal formed and why is it important as an energy resource?", "expected_subject": "social", "expected_chapter_hint": "MINERALS AND ENERGY RESOURCES", "expected_curriculum_match": "in_grade", "category": "cross_subject_adjacent"},
+    {"id": "cross_adjacent_02", "question": "What controls the heartbeat and breathing rate in the human body?", "expected_subject": "science", "expected_chapter_hint": "Control and Coordination", "expected_curriculum_match": "in_grade", "category": "cross_subject_adjacent"},
+
+    {"id": "different_grade_01", "question": "What are Newton's three laws of motion?", "expected_curriculum_match": "not_in_curriculum", "category": "different_grade_topic", "note": "Class 9 physics, not in Class 10 NCERT"},
+    {"id": "different_grade_02", "question": "How do you calculate the derivative of a function in calculus?", "expected_curriculum_match": "not_in_curriculum", "category": "different_grade_topic", "note": "Class 11/12 maths topic"},
+    {"id": "different_grade_03", "question": "What is the process of mitosis and meiosis in cell division?", "expected_curriculum_match": "not_in_curriculum", "category": "different_grade_topic", "note": "Class 9/11 biology, not a Class 10 chapter"},
+
+    {"id": "generic_gk_01", "question": "What is the theory of relativity?", "expected_curriculum_match": "not_in_curriculum", "category": "generic_gk"},
+    {"id": "generic_gk_02", "question": "What is object-oriented programming?", "expected_curriculum_match": "not_in_curriculum", "category": "generic_gk"},
+    {"id": "generic_gk_03", "question": "How do you make bread from scratch?", "expected_curriculum_match": "not_in_curriculum", "category": "generic_gk"},
+    {"id": "generic_gk_04", "question": "What were the causes of World War 1?", "expected_curriculum_match": "not_in_curriculum", "category": "generic_gk", "note": "Only Geography content is ingested for Class 10 Social today, no History chapters"},
+
+    {"id": "no_subject_guess_01", "question": "asdkfjaskldjf???", "expected_curriculum_match": "not_in_curriculum", "category": "gibberish", "note": "should resolve via no book_uuid path, not a real retrieval question"}
+  ]
+}

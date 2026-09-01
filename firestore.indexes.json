@@ -1,0 +1,15 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "query_cache",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "normalized_query", "order": "ASCENDING" },
+        { "fieldPath": "class", "order": "ASCENDING" },
+        { "fieldPath": "board", "order": "ASCENDING" },
+        { "fieldPath": "language", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

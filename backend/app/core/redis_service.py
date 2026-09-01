@@ -31,7 +31,22 @@ class InMemoryRedis:
         if name in self.expirations:
             del self.expirations[name]
         return 1
-        
+
+    def ttl(self, name):
+        """Mirrors real Redis TTL semantics: -2 if the key doesn't exist,
+        -1 if it exists with no expiration, else seconds remaining."""
+        now = time.time()
+        if name not in self.store:
+            return -2
+        if name not in self.expirations:
+            return -1
+        remaining = self.expirations[name] - now
+        if remaining <= 0:
+            del self.store[name]
+            del self.expirations[name]
+            return -2
+        return int(remaining)
+
     def ping(self):
         return True
 

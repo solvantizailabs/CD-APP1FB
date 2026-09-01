@@ -47,7 +47,8 @@ from backend.app.api.routes import (
     profile_router,
     tts_router,
     personalization_router,
-    history_router
+    history_router,
+    pipeline_logs_router,
 )
 
 # --- Lifespan Management ---
@@ -87,6 +88,7 @@ app.include_router(profile_router)
 app.include_router(tts_router)
 app.include_router(personalization_router)
 app.include_router(history_router)
+app.include_router(pipeline_logs_router)
 # Note: visual_learning_router (the standalone /api/visual_learning HTTP endpoint)
 # has been removed - nothing in the frontend calls it anymore (the "Visual
 # Learning Mode" UI it served was dead/unreachable code). The underlying
@@ -244,6 +246,13 @@ async def achievements_page():
 @app.get("/dashboard")
 async def dashboard_page():
     return FileResponse(os.path.join(PUBLIC_DIR, 'dashboard.html'))
+
+@app.get("/pipeline-logs")
+async def pipeline_logs_page():
+    return FileResponse(
+        os.path.join(PUBLIC_DIR, 'pipeline-logs.html'),
+        headers={"Cache-Control": "no-cache, must-revalidate"},
+    )
 
 @app.get("/my-bag")
 async def my_bag_page():

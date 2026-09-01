@@ -489,18 +489,41 @@ GLOBAL_CACHE_INDEX_COLLECTION = os.environ.get("GLOBAL_CACHE_INDEX_COLLECTION_NA
 # worded questions scored 0.40-0.49, an unrelated control topic scored
 # 0.10-0.13 - 0.30 sits with margin on both sides of that real gap.
 STUDENT_HISTORY_MIN_SCORE = 0.30
-# Calibrated 2026-08-08: a real paraphrase ("explain photosynthesis" vs "how
-# does photosynthesis work") scored 0.68-0.73; an unrelated topic scored
-# 0.23. 0.62 sits just under the real paraphrase range with margin above the
-# unrelated score - deliberately still the stricter of the two thresholds
-# (see the module docstring above for why).
-GLOBAL_CACHE_MIN_SCORE = 0.62
+# Re-calibrated 2026-08-30 (was 0.62, set 2026-08-08): live testing of the
+# new orchestrator engine found a real false match at this threshold - "give
+# an example of a quadratic equation" (a follow-up's resolved form) matched
+# "What is a quadratic equation?" (a different intent - definition, not
+# example) at 0.72, well above the old 0.62 bar, and got served the wrong
+# cached answer. The 2026-08-08 calibration's own true-positive paraphrase
+# ("explain photosynthesis" vs "how does photosynthesis work") scored
+# 0.68-0.73 - the SAME range as today's false positive, so no single
+# threshold perfectly satisfies both. Resolved deliberately toward the
+# stricter side: a cache MISS just costs one extra generation call (safe);
+# a cache FALSE-HIT serves a wrong answer to a student (a real correctness
+# bug) - that asymmetry means erring strict is the right tradeoff, even
+# though it means some genuine paraphrases in the 0.68-0.79 range will now
+# regenerate instead of hitting cache. 0.80 sits above the 0.72 false
+# positive and below the confirmed 0.86-0.88 true positives found in the
+# same test pass ("can you define X" / "what exactly is X" vs "what is X").
+GLOBAL_CACHE_MIN_SCORE = 0.80
 
 
 def _ensure_collection(name: str):
-    """Create a Qdrant collection sized to the active embedder if it doesn't exist yet."""
+    """
+    Create a Qdrant collection sized to the active embedder if it doesn't
+    exist yet, AND idempotently ensure every field this module filters on
+    has a payload index - not just at creation time. Found live 2026-08-30:
+    board/language (Decision 5) were added as filter fields on the
+    already-existing global_answer_cache_index collection, and Qdrant
+    requires an explicit payload index per filtered field, not just at
+    collection creation - a collection created before this fix would
+    otherwise silently 400 on every board/language-filtered search forever.
+    create_payload_index is a no-op (raises, caught) if the index already
+    exists, so calling this on every ensure is cheap and safe.
+    """
     if client is None or local_embedder is None:
         return
+    required_keyword_fields = ["uid", "class_name", "subject", "board", "language", "chapter"]
     try:
         if not client.collection_exists(collection_name=name):
             dim = local_embedder.get_sentence_embedding_dimension()
@@ -508,15 +531,16 @@ def _ensure_collection(name: str):
                 collection_name=name,
                 vectors_config=models.VectorParams(size=dim, distance=models.Distance.COSINE),
             )
-            for field in ["uid", "class_name", "subject"]:
-                try:
-                    client.create_payload_index(
-                        collection_name=name, field_name=field,
-                        field_schema=models.PayloadSchemaType.KEYWORD,
-                    )
-                except Exception:
-                    pass
             print(f"[Qdrant] Collection '{name}' created successfully.")
+
+        for field in required_keyword_fields:
+            try:
+                client.create_payload_index(
+                    collection_name=name, field_name=field,
+                    field_schema=models.PayloadSchemaType.KEYWORD,
+                )
+            except Exception:
+                pass  # already exists - expected on every call after the first
     except Exception as e:
         print(f"[Qdrant] Warning: could not ensure collection '{name}': {e}")
 
@@ -668,13 +692,23 @@ def store_feedback_note(uid: str, question: str, class_name, subject: str,
         print(f"[StudentHistory] Failed to store feedback note for uid={uid}: {e}")
 
 
-def index_global_cache_entry(doc_id: str, raw_query: str, class_name: str, subject: str) -> None:
+def index_global_cache_entry(
+    doc_id: str, raw_query: str, class_name: str, subject: str,
+    board: str = "", language: str = "", chapter: str = "",
+) -> None:
     """
     SS6.7: index a freshly-cached answer's question text semantically, so a
     later, differently-worded-but-same-intent question can still find it.
     The Firestore doc (written by save_to_global_query_cache) stays the
     source of truth for the answer payload - this collection only stores
     enough to find that doc's ID again.
+
+    board/language added 2026-08-30 (Decision 5, ORCHESTRATOR_FRD_V3_ANALYSIS.md):
+    a cached answer for one board/language must never be served as correct
+    for a different one. chapter added the same day, in place of the
+    originally-planned `topic` (see check_global_query_cache's docstring
+    for why) - chapter grounds reliably against real curriculum data,
+    topic does not and has no downstream consumer.
     """
     if client is None or local_embedder is None or not raw_query:
         return
@@ -692,6 +726,9 @@ def index_global_cache_entry(doc_id: str, raw_query: str, class_name: str, subje
                     "raw_query": raw_query,
                     "class_name": str(class_name),
                     "subject": str(subject or "").lower(),
+                    "board": str(board or "").strip().lower(),
+                    "language": str(language or "").strip().lower(),
+                    "chapter": str(chapter or "").strip().lower(),
                     "timestamp": datetime.datetime.utcnow().isoformat(),
                 },
             )],
@@ -700,13 +737,20 @@ def index_global_cache_entry(doc_id: str, raw_query: str, class_name: str, subje
         print(f"[GlobalCacheIndex] Failed to index doc_id={doc_id}: {e}")
 
 
-def find_semantic_cache_match(query: str, class_name: str, subject: str) -> Optional[str]:
+def find_semantic_cache_match(
+    query: str, class_name: str, subject: str,
+    board: str = "", language: str = "", chapter: str = "",
+) -> Optional[str]:
     """
     SS6.7: given a query that missed the exact-text cache check, look for a
     semantically-equivalent cached question and return its Firestore doc_id
     (or None). Uses a deliberately high similarity bar (GLOBAL_CACHE_MIN_SCORE)
     since a false positive here means replaying a possibly-wrong cached
     answer to an unrelated question.
+
+    board/language added 2026-08-30 (Decision 5) - filtered the same way
+    class_name/subject already are, for the same reason. chapter added the
+    same day in place of `topic` - see index_global_cache_entry above.
     """
     if client is None or local_embedder is None or not query:
         return None
@@ -717,6 +761,15 @@ def find_semantic_cache_match(query: str, class_name: str, subject: str) -> Opti
         subj_str = str(subject or "").strip().lower()
         if subj_str and subj_str not in ["all", "none", "choose your subject..."]:
             must.append(models.FieldCondition(key="subject", match=models.MatchValue(value=subj_str)))
+        board_str = str(board or "").strip().lower()
+        if board_str:
+            must.append(models.FieldCondition(key="board", match=models.MatchValue(value=board_str)))
+        language_str = str(language or "").strip().lower()
+        if language_str:
+            must.append(models.FieldCondition(key="language", match=models.MatchValue(value=language_str)))
+        chapter_str = str(chapter or "").strip().lower()
+        if chapter_str:
+            must.append(models.FieldCondition(key="chapter", match=models.MatchValue(value=chapter_str)))
         results = client.search(
             collection_name=GLOBAL_CACHE_INDEX_COLLECTION,
             query_vector=vector,

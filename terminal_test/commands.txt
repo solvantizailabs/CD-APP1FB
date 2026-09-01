@@ -1,0 +1,169 @@
+================================================================================
+TERMINAL_TEST - COMMAND REFERENCE
+================================================================================
+Quick reminder sheet for every test script in this folder: what it does, what
+it needs running first, and the exact command to run it. Run everything from
+the project root (CD-APP1FB), not from inside terminal_test/.
+
+Two things need to be running for MOST of these (not all - see each entry):
+  1. The backend server (for anything that says "needs: backend server")
+  2. Nothing else - Qdrant/Firestore/OpenAI are cloud services, already
+     configured via .env, no local setup needed for those.
+
+--------------------------------------------------------------------------------
+0. START THE BACKEND SERVER
+--------------------------------------------------------------------------------
+Needed by: ingestion.py, retrieval.py, answer_generation.py, the pipeline-logs
+dashboard. NOT needed by: orchestrator_engine.py (calls the pipeline directly
+in-process), or any of the Qdrant-inspection scripts (section 5 below).
+
+    uvicorn backend.app.main:app --reload --port 8000
+
+Leave this running in its own terminal. Everything below assumes it's up
+unless noted otherwise.
+
+--------------------------------------------------------------------------------
+1. INGESTION (chunking + embedding) - ingestion.py
+--------------------------------------------------------------------------------
+Uploads real chapter PDF(s) through the actual application API - the same
+upload flow the UI uses. Triggers the full real pipeline: chunking, embedding,
+Qdrant indexing, Firestore bookkeeping, Supabase storage, image processing -
+whatever the pipeline currently does, unmodified. Polls until the background
+ingestion job finishes and prints the result.
+
+Needs: backend server running.
+
+    python terminal_test/ingestion.py --files "path/to/chapter1.pdf" "path/to/chapter2.pdf" --class 10 --subject social
+
+    python terminal_test/ingestion.py --files "path/to/single_chapter.pdf" --class 10 --subject maths
+
+Options:
+    --files          One or more PDF paths (required)
+    --class          Grade/class number, e.g. 10 (required)
+    --subject        Subject name, e.g. maths / science / social (required)
+    --base-url       Application base URL (default: http://127.0.0.1:8000)
+    --poll-interval  Seconds between status checks (default: 10)
+    --poll-timeout   Max seconds to wait before giving up (default: 900)
+
+--------------------------------------------------------------------------------
+2. RETRIEVAL ONLY (no orchestrator, no generation) - retrieval.py
+--------------------------------------------------------------------------------
+Asks a question against an already-ingested book and shows every chunk the
+retriever actually returns - pure retrieval, nothing else (no LLM answer, no
+safety layer, no orchestrator). Interactive - it prompts you for an email
+(optional, press Enter to skip and browse all books) and then the question.
+
+Needs: backend server running.
+
+    python terminal_test/retrieval.py
+
+    python terminal_test/retrieval.py --base-url http://127.0.0.1:8000
+
+--------------------------------------------------------------------------------
+3. FULL LIVE ANSWER (the CURRENT/OLD orchestrator) - answer_generation.py
+--------------------------------------------------------------------------------
+Replicates the real student-facing user.html flow end to end through the
+REAL, currently-live /api/smart_query endpoint - the OLD/current orchestrator
+(master_orchestrator_prompt.txt, the one actually serving students today).
+This is NOT the new question_pipeline/ engine - see section 4 for that.
+Interactive - prompts for a real registered student's email, then questions
+one at a time.
+
+Needs: backend server running. Student must already be registered (real
+login flow, no anonymous path).
+
+    python terminal_test/answer_generation.py
+
+    python terminal_test/answer_generation.py --base-url http://127.0.0.1:8000
+
+--------------------------------------------------------------------------------
+4. NEW ORCHESTRATOR ENGINE (question_pipeline/, NOT yet live) - orchestrator_engine.py
+--------------------------------------------------------------------------------
+Runs the NEW standalone pipeline (backend/app/services/question_pipeline/) -
+safety layers, reformulation/follow-up detection, curriculum RAG matching,
+same-topic chunk-cache reuse, answer generation - everything we've been
+building and testing this whole session. Calls run_pipeline() directly in
+Python (real OpenAI/Qdrant/Firestore/Redis, just not over HTTP, since this
+engine isn't wired into any live endpoint yet). Every question logs a full
+record to the pipeline-logs dashboard (see section 6).
+
+Needs: NOTHING running - works standalone. (Student login falls back to a
+direct Firestore lookup automatically if no server is up.)
+
+Interactive, one question at a time:
+    python -m terminal_test.orchestrator_engine --email praneeth10@cg.com
+
+Batch mode - runs every question in a text file (one per line, # = comment)
+in ONE continuous session, so follow-ups chain together like a real
+conversation:
+    python -m terminal_test.orchestrator_engine --email praneeth10@cg.com --questions-file path\to\questions.txt
+
+Options:
+    --email            Student email - skips the interactive login prompt
+    --questions-file   Path to a questions .txt file - runs non-interactively
+    --base-url         Used only for the login lookup (default: http://127.0.0.1:8000)
+    --model            Override the LLM model (default: gpt-4o-mini / $OPENAI_MODEL)
+
+Output: per-question JSON in terminal_test/outputs/orchestrator_engine/, plus
+a full pipeline_logs record per question (Firestore + local JSON mirror under
+terminal_test/outputs/pipeline_logs/) viewable in the dashboard.
+
+--------------------------------------------------------------------------------
+5. QDRANT INSPECTION (read-only, no server, no orchestrator)
+--------------------------------------------------------------------------------
+Direct read-only checks against the Qdrant vector DB itself - for debugging
+ingestion/chunking quality, not for asking questions.
+
+Needs: nothing running - reads Qdrant directly via .env credentials.
+
+  a) Check whether learning_objective metadata came back populated for every
+     ingested book:
+        python terminal_test/check_learning_objectives.py
+
+  b) List every chunk with an EMPTY learning_objective for one book, with
+     enough fields to diagnose why:
+        python terminal_test/inspect_empty_learning_objectives.py --class 10 --subject science
+
+  c) Spot-check Class 10 Maths specifically - compares live Qdrant point
+     counts per chapter against the ingestion-time book_index.json claims:
+        python -m terminal_test.spot_check_class10_maths
+
+--------------------------------------------------------------------------------
+6. THE PIPELINE-LOGS DASHBOARD (HTML page)
+--------------------------------------------------------------------------------
+The "Pipeline Trace Inspector" - visual dashboard over every question logged
+by orchestrator_engine.py (section 4). Shows the full stage timeline, exact
+LLM prompts sent, retrieved chunks with scores, follow-up/same-topic
+resolution detail, tokens and cost - everything, per question.
+
+Needs: backend server running (section 0).
+
+    Step 1 - start the backend server (if not already running):
+        uvicorn backend.app.main:app --reload --port 8000
+
+    Step 2 - open in a browser:
+        http://localhost:8000/pipeline-logs
+
+    Step 3 - enter the access key when prompted (one-time per browser,
+    remembered after that). The key is set as PIPELINE_LOGS_KEY in .env:
+        46e63b4ac4a291b537fce1d75d68bf8f
+
+    Step 4 - narrow results by typing a student's UID in the left rail and
+    clicking "Apply filters" to see their tracker session + question history.
+    Click any row to open the full per-question detail.
+
+--------------------------------------------------------------------------------
+TYPICAL WORKFLOW (start to finish)
+--------------------------------------------------------------------------------
+1. Ingest a book:            section 1 (ingestion.py)
+2. Sanity-check the chunks:  section 5 (Qdrant inspection scripts)
+3. Test raw retrieval:       section 2 (retrieval.py)
+4. Test the NEW pipeline:    section 4 (orchestrator_engine.py) - build a
+   questions.txt file, run it as a batch, get real logged results.
+5. Inspect the results:      section 6 (dashboard) - filter by the student's
+   uid used in step 4, click through each question.
+
+(Section 3, answer_generation.py, tests the OLD/current live orchestrator -
+use it only when you specifically need to compare against what's live today,
+not as part of testing the new pipeline.)
+================================================================================

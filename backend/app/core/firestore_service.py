@@ -90,7 +90,7 @@ def normalize_query_string(q: str) -> str:
     return q
 
 
-def check_global_query_cache(raw_query: str, class_name: str, subject: str = None):
+def check_global_query_cache(raw_query: str, class_name: str, subject: str = None, board: str = None, language: str = None, chapter: str = None):
     """
     Checks Firestore nested 'query_cache' for a matching query record.
     Returns the cached data if found and valid on disk, else None.
@@ -101,6 +101,21 @@ def check_global_query_cache(raw_query: str, class_name: str, subject: str = Non
     dedicated Qdrant index, so differently-worded questions with the same
     intent ("explain photosynthesis" vs "how does photosynthesis work")
     still hit the cache instead of silently missing it.
+
+    board/language added 2026-08-30 (Decision 5, docs/ORCHESTRATOR_FRD_V3_ANALYSIS.md):
+    a cached answer for one board/language must never be served as correct
+    for a different one. Callers should pass Stage 2's `standalone_question`
+    here now, not the raw unreformulated query text (docs/ORCHESTRATOR_DEVELOPMENT_DOCUMENT.md
+    Stage 3) - the parameter name is unchanged for compatibility with the
+    still-live legacy caller in chat.py.
+
+    chapter added 2026-08-30, in place of `topic` from the original design:
+    `topic` was found to have no real grounding data available to Stage 2
+    (only chapter-level summaries exist) and no downstream consumer at all
+    (the student dashboard's topic-level insight is a separate, existing
+    system that clusters real query history after the fact, not this
+    field) - `chapter` is the field that actually grounds reliably, the
+    same mechanism that makes `subject` reliable.
     """
     import os
     normalized = normalize_query_string(raw_query)
@@ -109,9 +124,15 @@ def check_global_query_cache(raw_query: str, class_name: str, subject: str = Non
 
     class_str = str(class_name).strip()
     subj_str = str(subject or "").strip().lower()
+    board_str = str(board or "").strip().lower()
+    language_str = str(language or "").strip().lower()
+    chapter_str = str(chapter or "").strip().lower()
     clean_class = "".join(c for c in class_str if c.isdigit()) or "unknown"
 
-    logger.info(f"[CACHE] Checking global cache: normalized='{normalized}', class='{class_str}', subject='{subj_str}'")
+    logger.info(
+        f"[CACHE] Checking global cache: normalized='{normalized}', class='{class_str}', "
+        f"subject='{subj_str}', board='{board_str}', language='{language_str}', chapter='{chapter_str}'"
+    )
     try:
         # If subject is specific, search inside that subject's query_cache
         if subj_str and subj_str not in ["all", "none", "choose your subject..."]:
@@ -126,6 +147,13 @@ def check_global_query_cache(raw_query: str, class_name: str, subject: str = Non
                           .where("normalized_query", "==", normalized)\
                           .where("class", "==", class_str)
 
+        if board_str:
+            query_ref = query_ref.where("board", "==", board_str)
+        if chapter_str:
+            query_ref = query_ref.where("chapter", "==", chapter_str)
+        if language_str:
+            query_ref = query_ref.where("language", "==", language_str)
+
         docs = query_ref.limit(1).get()
 
         cache_doc = docs[0] if docs else None
@@ -136,7 +164,7 @@ def check_global_query_cache(raw_query: str, class_name: str, subject: str = Non
             logger.info("[CACHE] Exact-text miss, trying semantic cache lookup...")
             try:
                 from backend.app.services.retrieval import qdrant_service
-                doc_id = qdrant_service.find_semantic_cache_match(raw_query, class_str, subj_str)
+                doc_id = qdrant_service.find_semantic_cache_match(raw_query, class_str, subj_str, board_str, language_str, chapter_str)
             except Exception as sem_err:
                 logger.warning(f"[CACHE] Semantic cache lookup failed, treating as miss: {sem_err}")
                 doc_id = None
@@ -247,7 +275,11 @@ def check_global_query_cache(raw_query: str, class_name: str, subject: str = Non
         return None
 
 
-def save_to_global_query_cache(raw_query: str, class_name: str, subject: str, orchestrator_output: dict, interactive_url: str = None, video_scenes: list = None, query_json_url: str = None):
+def save_to_global_query_cache(
+    raw_query: str, class_name: str, subject: str, orchestrator_output: dict,
+    interactive_url: str = None, video_scenes: list = None, query_json_url: str = None,
+    board: str = None, language: str = None, chapter: str = None,
+):
     """
     Saves a query execution result into the nested 'query_cache' collection.
 
@@ -256,6 +288,9 @@ def save_to_global_query_cache(raw_query: str, class_name: str, subject: str, or
     lesson_package. The orchestrator itself no longer produces a storyboard, so
     this is the only place scene/audio data for a video answer is persisted -
     without it, a cache hit on a video query would have nothing to replay.
+
+    board/language added 2026-08-30 (Decision 5) - same key-shape fix as
+    check_global_query_cache above, same reasoning.
     """
     import json
     if not orchestrator_output or not (orchestrator_output.get("text_narration") or video_scenes):
@@ -267,6 +302,9 @@ def save_to_global_query_cache(raw_query: str, class_name: str, subject: str, or
 
     class_str = str(class_name).strip()
     subj_str = str(subject or "").strip().lower()
+    board_str = str(board or "").strip().lower()
+    language_str = str(language or "").strip().lower()
+    chapter_str = str(chapter or "").strip().lower()
 
     # Resolve subject from orchestrator output if generic "all"
     if not subj_str or subj_str in ["all", "none", "choose your subject..."]:
@@ -277,6 +315,9 @@ def save_to_global_query_cache(raw_query: str, class_name: str, subject: str, or
         "normalized_query": normalized,
         "class": class_str,
         "subject": subj_str,
+        "board": board_str,
+        "language": language_str,
+        "chapter": chapter_str,
         # Store as string to prevent Firestore map field nesting limits / invalid keys
         "orchestrator_output": json.dumps(orchestrator_output),
         "interactive_url": interactive_url,
@@ -309,7 +350,7 @@ def save_to_global_query_cache(raw_query: str, class_name: str, subject: str, or
         # failure here must not fail the cache write itself.
         try:
             from backend.app.services.retrieval import qdrant_service
-            qdrant_service.index_global_cache_entry(doc_id, raw_query, class_str, subj_str)
+            qdrant_service.index_global_cache_entry(doc_id, raw_query, class_str, subj_str, board_str, language_str, chapter_str)
         except Exception as index_err:
             logger.warning(f"[CACHE] Failed to semantically index cache entry {doc_id}: {index_err}")
     except Exception as e:

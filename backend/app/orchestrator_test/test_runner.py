@@ -104,8 +104,19 @@ def get_cached_curriculum_metadata(grade: int) -> str:
             ch_name = ch.get("chapter_name", "")
             summary = (ch.get("summary") or "").strip()
             if summary:
-                # Keep prompt size sane - full summaries are prose paragraphs.
-                chapter_summaries.append(f"• {subject_label} | Chapter: {ch_name} -> Summary: {summary[:400]}")
+                # Real bug found 2026-08-31 via the question_pipeline log report's
+                # prompt_sent capture: a 400-char cap here was silently cutting off
+                # ~85% of every real chapter summary (surveyed full lengths across
+                # all ingested chapters: 1,244-4,168 chars, median 2,272) - almost
+                # always BEFORE the chapter's later sections, so Stage 2
+                # (understanding.py) had no textual evidence to ground a subject/
+                # chapter guess against any topic that wasn't in a chapter's
+                # opening paragraph (e.g. "Fragmentation" in Ch7's section 7.2,
+                # cut off because the summary was truncated mid-section 7.1).
+                # 5000 is comfortably above the observed max, not a real limit -
+                # this is a safety ceiling against a future outlier, not a
+                # deliberate truncation point like 400 was.
+                chapter_summaries.append(f"• {subject_label} | Chapter: {ch_name} -> Summary: {summary[:5000]}")
             else:
                 chapter_summaries.append(f"• {subject_label} | Chapter: {ch_name}")
 

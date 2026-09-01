@@ -26,10 +26,31 @@ class Candidate:
 
 
 class TextResponse:
-    def __init__(self, text: str):
+    def __init__(self, text: str, input_tokens: Optional[int] = None, output_tokens: Optional[int] = None):
         self.text = text or ""
         self.parts = [self.text] if self.text else []
         self.candidates = [Candidate()] if self.text else []
+        # Real token counts from OpenAI's own `usage` object, when the
+        # caller passed one through - None (not 0) if unavailable, so
+        # observability/llm_call.py can tell "genuinely zero tokens" apart
+        # from "this call site didn't have a usage object to read."
+        self.input_tokens = input_tokens
+        self.output_tokens = output_tokens
+
+
+def _usage_tokens(usage: Any) -> tuple[Optional[int], Optional[int]]:
+    """Normalizes OpenAI usage across the two APIs this adapter calls:
+    chat.completions uses prompt_tokens/completion_tokens, the Responses
+    API (web_search path) uses input_tokens/output_tokens."""
+    if usage is None:
+        return None, None
+    input_tokens = getattr(usage, "prompt_tokens", None)
+    if input_tokens is None:
+        input_tokens = getattr(usage, "input_tokens", None)
+    output_tokens = getattr(usage, "completion_tokens", None)
+    if output_tokens is None:
+        output_tokens = getattr(usage, "output_tokens", None)
+    return input_tokens, output_tokens
 
 
 def _messages(contents: Any) -> list[dict[str, Any]]:
@@ -109,7 +130,8 @@ class _Models:
             if temperature is not None:
                 kwargs["temperature"] = temperature
             result = self._client.responses.create(**kwargs)
-            return TextResponse(getattr(result, "output_text", "") or "")
+            in_tok, out_tok = _usage_tokens(getattr(result, "usage", None))
+            return TextResponse(getattr(result, "output_text", "") or "", input_tokens=in_tok, output_tokens=out_tok)
 
         kwargs: dict[str, Any] = {
             "model": actual_model,
@@ -125,7 +147,8 @@ class _Models:
 
         result = self._client.chat.completions.create(**kwargs)
         text = result.choices[0].message.content if result.choices else ""
-        return TextResponse(text or "")
+        in_tok, out_tok = _usage_tokens(getattr(result, "usage", None))
+        return TextResponse(text or "", input_tokens=in_tok, output_tokens=out_tok)
 
     def generate_content_stream(self, model: Optional[str] = None, contents: Any = None, config: Any = None) -> Iterator[TextChunk]:
         # Backward compatibility for call signatures like generate_content_stream(contents)

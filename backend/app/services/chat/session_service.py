@@ -184,22 +184,40 @@ class SmartSessionManager:
         redis_service.save_session(session_id, session, ttl=self.ttl)
         print(f"[SESSION] Added turn {turn_data['turn']} to session {session_id}")
 
-    def update_topic_chunks(self, session_id: str, chunks: list):
+    def update_topic_chunks(self, session_id: str, chunks: list, topic_meta: Optional[dict] = None):
         """
         Cache retrieved chunks for the current topic in Redis.
-        
+
         Args:
             session_id: Session ID
             chunks: Retrieved text chunks from Qdrant
+            topic_meta: {subject, chapter, topic} describing what these chunks
+                are about - stored alongside the chunks so a later follow-up
+                can check whether ITS topic still matches before reusing them
+                (see get_current_topic_meta / rag_stage.py's same-topic
+                comparison). Added 2026-08-31 - previously chunks were cached
+                with no label at all, so a follow-up's reuse of them was an
+                unconditional assumption, never actually verified.
         """
         session = redis_service.get_session(session_id)
         if not session:
             return
-        
+
         session["current_topic_chunks"] = chunks
+        if topic_meta is not None:
+            session["current_topic_meta"] = topic_meta
         session["last_updated"] = datetime.now().isoformat()
         redis_service.save_session(session_id, session, ttl=self.ttl)
         print(f"[SESSION] Cached {len(chunks)} chunks for session {session_id}")
+
+    def get_current_topic_meta(self, session_id: str) -> Optional[dict]:
+        """
+        Topic label ({subject, chapter, topic}) for whatever is currently
+        cached in current_topic_chunks - see update_topic_chunks above.
+        None if never set (e.g. no fresh search has run yet this session).
+        """
+        session = redis_service.get_session(session_id)
+        return session.get("current_topic_meta") if session else None
 
     def get_window(self, session_id: str) -> List[dict]:
         """
