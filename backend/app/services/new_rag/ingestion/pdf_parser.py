@@ -54,7 +54,6 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 
 from pypdf import PdfReader
-import pdfplumber
 
 from backend.app.services.new_rag.retry import call_with_retry
 from backend.app.services.new_rag import rate_governor
@@ -584,6 +583,7 @@ def extract_raw_pages(pdf_path: str) -> List[Dict]:
     instead of being trusted blindly.
     """
     from backend.app.services.new_rag.ingestion.structure_parser import find_reading_order_warnings
+    import pdfplumber
 
     reader = PdfReader(pdf_path)
     plumber_pages = None

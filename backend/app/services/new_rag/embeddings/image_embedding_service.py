@@ -19,11 +19,19 @@ sentence-transformers is already a dependency in this codebase (see
 qdrant_service.py's legacy local_embedder), so this introduces no new
 package.
 """
+from __future__ import annotations
+
 import logging
 from functools import lru_cache
-from typing import List
+from typing import TYPE_CHECKING, List
 
-from PIL import Image
+if TYPE_CHECKING:
+    # Type-hint only (2026-09-02, Render free-tier 512Mi OOM fix) - Image is
+    # never actually used at runtime in this file, only in embed_images'
+    # signature below. `from __future__ import annotations` makes every
+    # annotation a lazy string, so this import only matters to static type
+    # checkers and never costs real memory at app boot.
+    from PIL import Image
 
 logger = logging.getLogger(__name__)
 

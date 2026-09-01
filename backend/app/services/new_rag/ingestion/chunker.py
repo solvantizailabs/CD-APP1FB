@@ -9,11 +9,8 @@ single parent's own text only, never independently re-slicing raw pages.
 """
 import re
 import uuid
+from functools import lru_cache
 from typing import Dict, List, Optional
-
-import tiktoken
-
-_ENCODER = tiktoken.get_encoding("cl100k_base")
 
 CHILD_TARGET_TOKENS = 400
 CHILD_OVERLAP_WORDS = 50  # approx bridge between adjacent children of the same parent
@@ -32,8 +29,20 @@ VALID_TOPIC_CHUNK_TYPES = {
 }
 
 
+@lru_cache(maxsize=1)
+def _get_encoder():
+    # Lazy (2026-09-02, Render free-tier 512Mi OOM fix): tiktoken's
+    # get_encoding() loads/caches the actual BPE vocab table at call time,
+    # not just an import - this used to run unconditionally at module
+    # import, on every app boot, even though it's only ever needed during
+    # real chapter ingestion (an occasional admin action), not for serving
+    # normal student questions.
+    import tiktoken
+    return tiktoken.get_encoding("cl100k_base")
+
+
 def _token_len(text: str) -> int:
-    return len(_ENCODER.encode(text)) if text else 0
+    return len(_get_encoder().encode(text)) if text else 0
 
 
 def normalize_chunk_type(raw_type: Optional[str]) -> str:
