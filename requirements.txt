@@ -19,3 +19,6 @@ requests
 pytz
 httpx
 nodeenv
+pdfplumber
+Pillow
+tiktoken
