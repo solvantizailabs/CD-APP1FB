@@ -21,4 +21,5 @@ httpx
 nodeenv
 pdfplumber
 Pillow
+sentence-transformers
 tiktoken
