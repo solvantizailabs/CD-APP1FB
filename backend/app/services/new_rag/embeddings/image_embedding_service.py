@@ -2,22 +2,30 @@
 Image embedding generation for diagram visual retrieval (Stage 2 of the
 image pipeline - see docs/IMAGE_PIPELINE_PLAN.md section 3).
 
-Locked decision for this build: a LOCAL CLIP model
+STATUS (2026-09-02): inactive. `sentence-transformers`/`torch` (the CLIP
+model this module used) were removed from requirements.txt to fix a
+Render 512Mi OOM at deploy time - see the deployment-fix discussion for
+the full options considered (a lighter ONNX CLIP via fastembed, a hosted
+multimodal embedder API, or a bigger Render plan; none chosen yet).
+Both call sites (image_indexer ingestion and hybrid_retriever's
+cross-modal widening) wrap calls into this module in broad try/except
+and fail open, so this being non-functional does not break ingestion or
+retrieval - diagrams still surface normally via caption/text matching,
+the app's primary retrieval path. Re-enabling this feature means
+re-adding a CLIP dependency and picking one of those options.
+
+Locked decision for this build (when last active): a LOCAL CLIP model
 (sentence-transformers' "clip-ViT-B-32"), not an API-based multimodal
 embedder. OpenAI has no public multimodal embedding endpoint; Voyage
 multimodal-3 / Cohere Embed 4 were the research-flagged stronger options
 for label/formula-heavy diagrams (docs/IMAGE_PIPELINE_PLAN.md section 3.1)
 but need API keys/credits this project doesn't currently have configured -
 this pipeline's OpenAI account is already at zero credits, blocking
-captioning and text-embedding elsewhere. Running CLIP locally means Stage 2
-can be built AND actually verified today rather than joining that same
-blocked queue. Swapping to a hosted multimodal embedder later only means
-swapping this module's two functions - image_indexer.py's collection
+captioning and text-embedding elsewhere. Running CLIP locally meant Stage 2
+could be built AND actually verified at the time rather than joining that
+same blocked queue. Swapping to a hosted multimodal embedder later only
+means swapping this module's two functions - image_indexer.py's collection
 schema doesn't change, since it stores plain float vectors either way.
-
-sentence-transformers is already a dependency in this codebase (see
-qdrant_service.py's legacy local_embedder), so this introduces no new
-package.
 """
 from __future__ import annotations
 

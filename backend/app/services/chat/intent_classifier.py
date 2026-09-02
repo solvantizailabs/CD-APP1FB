@@ -8,42 +8,6 @@ import json
 from backend.app.prompts import templates
 
 
-def calculate_query_similarity(
-    current_query: str,
-    previous_queries: List[str],
-    embedder
-) -> List[float]:
-    """
-    Calculate cosine similarity between current and previous queries.
-    
-    Args:
-        current_query: The user's current query
-        previous_queries: List of previous queries to compare against
-        embedder: Sentence transformer model for encoding
-    
-    Returns:
-        List of similarity scores (0.0 to 1.0) for each previous query
-    """
-    try:
-        from sentence_transformers import util
-        
-        if not previous_queries:
-            return []
-        
-        current_embedding = embedder.encode(current_query, convert_to_tensor=True)
-        scores = []
-        
-        for prev_query in previous_queries:
-            prev_embedding = embedder.encode(prev_query, convert_to_tensor=True)
-            similarity = util.cos_sim(current_embedding, prev_embedding)[0][0].item()
-            scores.append(similarity)
-        
-        return scores
-    except Exception as e:
-        print(f"[SIMILARITY] Error calculating similarity: {e}")
-        return []
-
-
 def determine_next_action(
     current_query: str,
     conversation_window: List[dict],
@@ -67,7 +31,7 @@ def determine_next_action(
         conversation_window: List of recent conversation turns
         openai_client: OpenAI client for classification
         generation_model_name: Model name to use for generation
-        embedder: Sentence transformer for similarity
+        embedder: unused (kept for call-site compatibility; similarity tier removed)
         is_clicked_followup: True if user clicked a pre-generated follow-up
         last_action: Previous action taken (for context)
     
@@ -137,30 +101,12 @@ def determine_next_action(
         }
 
     # === TIER 4: SEMANTIC SIMILARITY ANALYSIS ===
+    # Embedder-based similarity scoring was removed along with sentence-transformers
+    # (2026-09-02 Render 512Mi OOM fix) - it never actually worked with the current
+    # OpenAIEmbedderWrapper/FastEmbedWrapper embedders anyway (encode() doesn't accept
+    # convert_to_tensor), so this tier always fell through to 0.0 already.
     max_similarity = 0.0
     similarity_scores = []
-    
-    if embedder is not None:
-        try:
-            # Get recent queries for comparison
-            recent_queries = [turn['query'] for turn in conversation_window[-3:]]
-            similarity_scores = calculate_query_similarity(current_query, recent_queries, embedder)
-            max_similarity = max(similarity_scores) if similarity_scores else 0.0
-            
-            # print(f"[TIER 4] ðŸ” Semantic similarity analysis:")
-            # print(f"[TIER 4]   Current query: '{current_query[:50]}...'")
-            # print(f"[TIER 4]   Comparing with {len(recent_queries)} recent queries")
-            # for i, (prev_q, score) in enumerate(zip(recent_queries, similarity_scores)):
-            #     print(f"[TIER 4]     {i+1}. '{prev_q[:40]}...' â†’ {score:.3f}")
-            # print(f"[TIER 4]   Max similarity: {max_similarity:.3f}")
-        except Exception as e:
-            print(f"[TIER 4] Warning: Error during similarity calculation: {e}")
-            max_similarity = 0.0
-    else:
-        # print(f"[TIER 4] âš ï¸ No embedder provided, skipping similarity check")
-        pass
-    
-    # High similarity â†’ Cache reuse
     if max_similarity >= HIGH_SIMILARITY_THRESHOLD:
         # print(f"[TIER 4] âš¡ High similarity ({max_similarity:.3f}) â†’ Cache reuse")
         return {
