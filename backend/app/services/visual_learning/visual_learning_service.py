@@ -510,26 +510,47 @@ async def generate_visual_lesson_stream(query: str, book_uuid: str, class_name: 
             with open(lesson_json_path, "w", encoding="utf-8") as f:
                 json.dump(lesson_package, f, indent=2)
             
-        # Trigger engine compilation bridge passing root output_dir
+        # Trigger engine compilation via the standalone Hyperframes service over
+        # HTTP - Hyperframes runs on its own Render service now, so it has no
+        # access to this process's local disk and can't be called in-process
+        # anymore. We send the lesson data itself, not a local folder path.
         compiled_url = None
         render_engine = None
         degraded_reason = None
-        try:
-            from backend.app.services.visual_learning.hyperframes_engine_bridge import compile_hyperframes_html_fast
-            compile_result = await compile_hyperframes_html_fast(lesson_id, output_dir)
-            if compile_result:
-                compiled_url = compile_result.get("url")
-                render_engine = compile_result.get("engine")
-                degraded_reason = compile_result.get("degraded_reason")
-        except Exception as compile_err:
-            logger.error(f"[HYPERFRAMES_ENGINE_DEGRADED] reason=bridge_exception lesson_id={lesson_id} error={compile_err}")
-            compiled_url = None
+        hyperframes_url = os.getenv("HYPERFRAMES_SERVICE_URL", "").rstrip("/")
+        if not hyperframes_url:
+            logger.error(f"[HYPERFRAMES_ENGINE_DEGRADED] reason=missing_service_url lesson_id={lesson_id}")
+        else:
+            try:
+                import httpx
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    resp = await client.post(
+                        f"{hyperframes_url}/compile",
+                        json={"lesson_id": lesson_id, "lesson_package": lesson_package},
+                    )
+                    resp.raise_for_status()
+                    compile_result = resp.json()
+                if compile_result:
+                    # Deliberately NOT compile_result["cloud_url"] here - that's
+                    # the raw Supabase URL, and Supabase serves public HTML
+                    # objects as Content-Type: text/plain with a locked-down
+                    # CSP sandbox (its own anti-abuse default), so the browser
+                    # would receive it as inert text instead of a live page.
+                    # "url" is the relative /uploads/... path, served by THIS
+                    # app's own /uploads/{file_path} route (main.py) - that
+                    # route already fetches the Supabase copy server-side and
+                    # re-serves it with correct headers when it's not on local
+                    # disk (built for surviving a redeploy; the split just
+                    # makes that the normal case instead of the edge case).
+                    compiled_url = compile_result.get("url")
+                    render_engine = compile_result.get("engine")
+                    degraded_reason = compile_result.get("degraded_reason")
+            except Exception as compile_err:
+                logger.error(f"[HYPERFRAMES_ENGINE_DEGRADED] reason=service_call_failed lesson_id={lesson_id} error={compile_err}")
+                compiled_url = None
 
-        # Verify whether index.html actually exists on disk before setting html_url
-        expected_index_path = os.path.join(output_dir, "index.html")
-        if not (compiled_url and os.path.exists(expected_index_path)):
-            logger.warning(f"[VisualLearning] index.html not found on disk at {expected_index_path}. Falling back to client-side slide renderer.")
-            compiled_url = None
+        if not compiled_url:
+            logger.warning(f"[VisualLearning] No compiled video URL for lesson {lesson_id}. Falling back to client-side slide renderer.")
             render_engine = None
 
         if render_engine == "python_fallback":
