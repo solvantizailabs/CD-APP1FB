@@ -1,6 +1,8 @@
 ================================================================================
 TERMINAL_TEST - COMMAND REFERENCE
 ================================================================================
+"https://cd-app1fb-82i7.onrender.com/pipeline-logs"- deployed url for the application.
+
 Quick reminder sheet for every test script in this folder: what it does, what
 it needs running first, and the exact command to run it. Run everything from
 the project root (CD-APP1FB), not from inside terminal_test/.

@@ -22,3 +22,4 @@ nodeenv
 pdfplumber
 Pillow
 tiktoken
+sentence-transformers
