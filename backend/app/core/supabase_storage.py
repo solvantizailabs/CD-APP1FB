@@ -16,29 +16,33 @@ def get_supabase_config():
 
 BUCKET_NAME = "visual-lessons"
 
-def _ensure_bucket_exists(client: httpx.Client, headers: dict):
+def _ensure_bucket_exists(client: httpx.Client, headers: dict, bucket: str = BUCKET_NAME):
     """Ensure the public storage bucket exists on Supabase."""
     supabase_url, _ = get_supabase_config()
     try:
         bucket_url = f"{supabase_url}/storage/v1/bucket"
-        res = client.get(f"{bucket_url}/{BUCKET_NAME}", headers=headers)
+        res = client.get(f"{bucket_url}/{bucket}", headers=headers)
         if res.status_code != 200:
-            client.post(bucket_url, headers=headers, json={"id": BUCKET_NAME, "name": BUCKET_NAME, "public": True})
+            client.post(bucket_url, headers=headers, json={"id": bucket, "name": bucket, "public": True})
     except Exception as e:
         logger.warning(f"[Supabase Storage] Notice ensuring bucket: {e}")
 
-def upload_file_to_supabase(local_path: str, destination_path: str) -> str:
+def upload_file_to_supabase(local_path: str, destination_path: str, bucket: str = BUCKET_NAME) -> str:
     """
     Uploads a local file to Supabase Cloud Storage.
     Returns public HTTPS CDN URL on success, or None on fallback.
     Outputs clear diagnostic logs for Render console monitoring.
+
+    `bucket` defaults to the original visual-lessons bucket so every existing
+    caller is unaffected; the HyperFrame worker passes bucket="videos" for MP4
+    uploads (DronaX - DigitalOcean Platform.pdf, Part G).
     """
     supabase_url, supabase_key = get_supabase_config()
     if not (supabase_url and supabase_key and os.path.exists(local_path)):
         return None
-        
+
     destination_path = destination_path.lstrip("/")
-    url = f"{supabase_url}/storage/v1/object/{BUCKET_NAME}/{destination_path}"
+    url = f"{supabase_url}/storage/v1/object/{bucket}/{destination_path}"
     headers = {
         "Authorization": f"Bearer {supabase_key}",
         "apiKey": supabase_key,
@@ -57,7 +61,9 @@ def upload_file_to_supabase(local_path: str, destination_path: str) -> str:
         content_type = "application/javascript"
     elif local_path.endswith(".css"):
         content_type = "text/css"
-        
+    elif local_path.endswith(".mp4"):
+        content_type = "video/mp4"
+
     headers["Content-Type"] = content_type
     
     try:
@@ -68,11 +74,11 @@ def upload_file_to_supabase(local_path: str, destination_path: str) -> str:
             resp = client.post(url, headers=headers, content=content)
             
             if resp.status_code in [400, 404] and "not found" in resp.text.lower():
-                _ensure_bucket_exists(client, headers)
+                _ensure_bucket_exists(client, headers, bucket)
                 resp = client.post(url, headers=headers, content=content)
-                
+
             if resp.status_code in [200, 201]:
-                public_url = f"{supabase_url}/storage/v1/object/public/{BUCKET_NAME}/{destination_path}"
+                public_url = f"{supabase_url}/storage/v1/object/public/{bucket}/{destination_path}"
                 logger.info(f"[SUPABASE STORAGE SUCCESS] Uploaded {os.path.basename(local_path)} -> {public_url}")
                 try:
                     print(f"[RENDER LOG] [SUPABASE STORAGE SUCCESS] Uploaded {os.path.basename(local_path)} -> {public_url}")

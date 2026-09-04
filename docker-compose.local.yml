@@ -1,0 +1,109 @@
+version: "3.9"
+
+# Local simulation of the full DigitalOcean deployment (Part K, and this
+# session's explicit ask to "test locally as if already deployed" before
+# touching Git or a real DO account). Same Dockerfiles that go to App
+# Platform / the Droplet / the Controller - only the Controller's
+# CONTROLLER_MODE differs (local Docker containers standing in for real
+# Droplets, see hyperframe-controller/digitalocean.py).
+#
+# Usage: docker compose -f docker-compose.local.yml up --build
+# Requires a .env file at the repo root with the real secrets (see .env.example).
+
+networks:
+  dronax_local:
+    name: dronax_local
+
+services:
+  redis:
+    image: redis:7-alpine
+    networks: [dronax_local]
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  dronax-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    networks: [dronax_local]
+    ports: ["8000:10000"]
+    env_file: .env
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      HYPERFRAMES_SERVICE_URL: "http://hyperframes-service:10000"
+    volumes:
+      # .dockerignore now excludes serviceAccountKey.json from every build
+      # context (correct - never bake secrets into an image), which means
+      # this main API's `COPY . .` no longer picks it up either. Confirmed
+      # by a real 503 here: "Firestore client is unavailable - Firebase
+      # Admin failed to initialize." Same fix already applied to the
+      # worker/controller services below - just missed on this one.
+      - ./serviceAccountKey.json:/app/serviceAccountKey.json:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  hyperframes-service:
+    build:
+      context: .
+      dockerfile: hyperframes_service/Dockerfile
+    networks: [dronax_local]
+    ports: ["8001:10000"]
+    env_file: .env
+
+  hyperframe-worker:
+    build:
+      context: .
+      dockerfile: hyperframe-worker/Dockerfile
+    # Fixed, known tag so the Controller's LocalDockerFleet can spawn
+    # additional sibling containers from the same image it just built.
+    image: dronax-hyperframe-worker:local
+    networks: [dronax_local]
+    env_file: .env
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      WORKER_ID: "local-worker-1"
+    volumes:
+      # firebase_init.py's directory-walk-up already finds this automatically
+      # at /app/serviceAccountKey.json - no code change needed. Simpler for
+      # local testing than pasting the key JSON into .env as one line.
+      - ./serviceAccountKey.json:/app/serviceAccountKey.json:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  hyperframe-controller:
+    build:
+      context: .
+      dockerfile: hyperframe-controller/Dockerfile
+    networks: [dronax_local]
+    env_file: .env
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      CONTROLLER_MODE: "local"
+      LOCAL_WORKER_IMAGE: "dronax-hyperframe-worker:local"
+      LOCAL_WORKER_NETWORK: "dronax_local"
+      # The Controller talks to the HOST's Docker daemon (via the socket
+      # mount below), so volume sources for containers it creates must be
+      # real host paths, not paths inside the controller's own container -
+      # confirmed by a real bug: workers the Controller spawned couldn't
+      # reach Firestore because they never got serviceAccountKey.json at
+      # all (unlike this compose file's own worker service, which mounts it
+      # directly by relative path below - that trick doesn't work from
+      # inside the Controller's own container).
+      HOST_SERVICE_ACCOUNT_KEY_PATH: "${PWD}/serviceAccountKey.json"
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      # Lets the Controller start/stop sibling worker containers on the host
+      # Docker daemon, standing in for the real DigitalOcean Droplet API.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./serviceAccountKey.json:/app/serviceAccountKey.json:ro

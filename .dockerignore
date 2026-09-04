@@ -1,0 +1,33 @@
+# No .dockerignore existed before today - every build was uploading the
+# entire repo as build context (confirmed by a real build log showing the
+# context transfer growing past 670MB and climbing). None of these are
+# needed inside any of this repo's Docker images; each Dockerfile COPYs only
+# the specific files/folders it actually uses.
+
+.git
+.venv
+node_modules
+__pycache__
+*.pyc
+
+# Large local-only data, never needed inside a container
+uploads
+bm25_indices
+chapterdata
+consolidated_deployment_outputs
+image_test
+terminal_test
+hyperframes_engine/outputs
+hyperframes_service/_work
+backend/app/services/new_rag/outputs
+backend/app/services/new_rag/test_outputs
+
+# Secrets - never bake into an image; passed as env vars / mounted at runtime
+.env
+serviceAccountKey.json
+
+# Docs / planning artifacts, not app code
+*.md
+*.pdf
+*.txt
+!requirements.txt

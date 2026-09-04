@@ -505,6 +505,18 @@ function setupChatSubmitGlobal() {
             subject: selectedBook ? selectedBook.subject : "all",
             is_clicked_followup: isClickedFollowup.toString()
         });
+
+        // Stashed on the card (not just a local variable) because the actual
+        // "Download Video" button lives in mountVideoLessonGlobal, a sibling
+        // function with no closure over this turn's query/class/subject -
+        // see that function's own comment for why it isn't nested in here.
+        const aiCardForVideo = document.getElementById(`ai-card-global-${currentTurn}`);
+        if (aiCardForVideo) {
+            aiCardForVideo.dataset.videoQuery = query;
+            aiCardForVideo.dataset.videoClassName = selectedBook ? selectedBook.class_name : studentClass;
+            aiCardForVideo.dataset.videoSubject = selectedBook ? selectedBook.subject : "General Knowledge";
+            aiCardForVideo.dataset.videoBookUuid = selectedBook ? selectedBook.id : "";
+        }
         if (_sessionId) params.append('session_id', _sessionId);
         // Passed through so the backend can persist a saved-audio copy of
         // text answers using the SAME voice the student is actually hearing
@@ -843,9 +855,13 @@ function setupChatSubmitGlobal() {
       <button class="hf-btn" title="Fullscreen" onclick="hfFullscreen('${playerId}')">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
       </button>
+      <button class="hf-btn" id="hf-download-${turnId}" title="Download as MP4" onclick="startMp4Download('${turnId}')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      </button>
       <span class="hf-scene-counter" id="${sceneId}">Scene —</span>
     </div>
   </div>
+  <div class="hf-download-status" id="hf-download-status-${turnId}" style="display:none; padding: 6px 14px; font-size: 12px; color: #94a3b8; text-align: right;"></div>
 </div>`;
 
                 // Hidden state element
@@ -1530,6 +1546,46 @@ function hfFullscreen(playerId) {
     } else {
         el.requestFullscreen && el.requestFullscreen();
     }
+}
+
+/**
+ * Triggers a real, downloadable MP4 render of the current turn's lesson
+ * (separate from the interactive HTML player above it - see
+ * public/js/video-job-poller.js and backend/app/api/routes/video.py for why
+ * these are two different systems, not a rewrite of one into the other).
+ * Reads query/class/subject off the card's dataset, stashed there at
+ * submit time since this function has no closure over that turn's request.
+ */
+function startMp4Download(turnId) {
+    const btn = document.getElementById(`hf-download-${turnId}`);
+    const statusEl = document.getElementById(`hf-download-status-${turnId}`);
+    const card = document.getElementById(`ai-card-global-${turnId}`);
+    if (!statusEl || !card || !window.DronaXVideo) return;
+
+    if (btn) btn.setAttribute('disabled', 'true');
+    statusEl.style.display = 'block';
+    statusEl.textContent = 'Starting video render...';
+
+    window.DronaXVideo.requestVideoJob({
+        query: card.dataset.videoQuery || '',
+        className: card.dataset.videoClassName || '',
+        subject: card.dataset.videoSubject || 'General Knowledge',
+        bookUuid: card.dataset.videoBookUuid || '',
+    }).then(({ video_job_id }) => {
+        statusEl.textContent = 'Generating video... this can take a couple of minutes.';
+        return window.DronaXVideo.pollVideoStatus(video_job_id, {
+            onUpdate: (s) => {
+                if (s.status === 'processing') statusEl.textContent = 'Rendering video...';
+                else if (s.status === 'uploading') statusEl.textContent = 'Almost done - uploading...';
+            },
+        });
+    }).then((finalStatus) => {
+        statusEl.innerHTML = `<a href="${finalStatus.video_url}" target="_blank" rel="noopener" style="color:#14b8a6; font-weight:700;">Download MP4 &#8595;</a>`;
+        if (btn) btn.removeAttribute('disabled');
+    }).catch((err) => {
+        statusEl.textContent = `Video generation failed: ${err.message}`;
+        if (btn) btn.removeAttribute('disabled');
+    });
 }
 
 /**

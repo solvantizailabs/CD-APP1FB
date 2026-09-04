@@ -78,6 +78,7 @@ from backend.app.api.routes import (
     personalization_router,
     history_router,
     pipeline_logs_router,
+    video_router,
 )
 
 # --- Lifespan Management ---
@@ -118,6 +119,14 @@ app.include_router(tts_router)
 app.include_router(personalization_router)
 app.include_router(history_router)
 app.include_router(pipeline_logs_router)
+app.include_router(video_router)
+
+
+@app.get("/health")
+async def health_check():
+    """DigitalOcean App Platform health check target (DronaX - DigitalOcean
+    Platform.pdf, Part Q)."""
+    return {"status": "healthy"}
 # Note: visual_learning_router (the standalone /api/visual_learning HTTP endpoint)
 # has been removed - nothing in the frontend calls it anymore (the "Visual
 # Learning Mode" UI it served was dead/unreachable code). The underlying

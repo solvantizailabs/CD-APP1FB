@@ -1,0 +1,4 @@
+redis
+httpx
+docker
+firebase-admin

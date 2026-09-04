@@ -7,4 +7,5 @@ from .tts import router as tts_router
 from .personalization import router as personalization_router
 from .history import router as history_router
 from .pipeline_logs import router as pipeline_logs_router
+from .video import router as video_router
 
