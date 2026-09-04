@@ -14,6 +14,16 @@ WORKDIR /app
 
 # Copy requirement manifest and install Python dependencies
 COPY requirements.txt ./
+
+# sentence-transformers (below, for CLIP image search) pulls in PyTorch as a
+# dependency. pip's default torch wheel bundles several GB of NVIDIA
+# CUDA/cuDNN libraries for GPU acceleration - dead weight here, since this is
+# always a CPU-only container (python:3.11-slim, no GPU). Confirmed by hand:
+# this single package was 6.45GB of the image. Installing the CPU-only torch
+# build FIRST means the next line's sentence-transformers install finds
+# torch's version requirement already satisfied and skips reinstalling it -
+# same CLIP functionality, ~5GB smaller image.
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Pre-download fastembed model weights during build so server boots instantly (0s startup delay)
