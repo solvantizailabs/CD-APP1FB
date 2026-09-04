@@ -121,6 +121,15 @@ def run_new_orchestrator_pipeline(
         "request_id": result.request_id,  # lets chat.py attach post-hoc TTS/video data to this same log record
         "resolved_book_uuid": resolved_book_uuid,
         "retrieved_top10_chunks": rag_result.sources if rag_result else [],
+        # Stage 4/5's already-fetched context text, handed straight to the video
+        # pipeline (see chat.py's VIDEO_REQUIRED branch) so it does not repeat
+        # the same hybrid_search_v2 call (incl. its own CLIP image-vector pass)
+        # a second time for the identical query/book_uuid. Real fix for a
+        # reproduced OOM: video requests ran retrieval twice (once here, once
+        # again inside visual_learning_service.py), doubling CLIP/embedding/
+        # reranker memory pressure for exactly the requests most likely to need
+        # image-heavy diagram matching.
+        "retrieval_context": rag_result.context if rag_result else "",
         "retrieval_status": rag_result.retrieval_status if rag_result else None,
         "retrieval_confidence_tier": rag_result.confidence_tier if rag_result else None,
         "retrieval_top_score": raw_retrieval.get("top_score"),

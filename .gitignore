@@ -9,6 +9,13 @@ firebase-credentials.json
 *.pem
 *.key
 
+# DigitalOcean App Spec dumps (doctl apps spec get) - these embed live secret
+# values (Supabase key, Firebase private key, API keys) in plaintext, not
+# placeholders. Real incident 2026-09-04: two such dumps almost got pushed to
+# GitHub. Never commit an app spec YAML - keep them local/scratchpad only.
+_current_spec*.yaml
+app_spec*.yaml
+
 # ============ PYTHON ============
 # Virtual environments
 venv/

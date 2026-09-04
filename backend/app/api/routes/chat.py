@@ -707,7 +707,12 @@ async def smart_query_engine(
                     book_uuid=video_book_uuid,
                     class_name=str(student_profile["class"]),
                     subject=video_subject,
-                    student_profile=student_profile
+                    student_profile=student_profile,
+                    # Stage 4/5 (run_new_orchestrator_pipeline above) already did a
+                    # full RAG fetch for this exact query/book - avoid repeating it
+                    # (incl. its own CLIP image-vector pass) a second time here, the
+                    # real cause of a reproduced OOM on video requests.
+                    precomputed_context=report.get("retrieval_context") or None,
                 )
 
                 streamed_scene_nos = set()

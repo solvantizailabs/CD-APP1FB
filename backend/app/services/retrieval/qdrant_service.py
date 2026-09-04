@@ -625,15 +625,15 @@ def retrieve_student_history(uid: str, query: str, limit: int = 3) -> List[Dict]
     try:
         _ensure_collection(STUDENT_HISTORY_COLLECTION)
         vector = _encode(query)
-        results = client.search(
+        response = client.query_points(
             collection_name=STUDENT_HISTORY_COLLECTION,
-            query_vector=vector,
+            query=vector,
             query_filter=models.Filter(
                 must=[models.FieldCondition(key="uid", match=models.MatchValue(value=uid))]
             ),
             limit=limit,
         )
-        hits = [r for r in results if r.score >= STUDENT_HISTORY_MIN_SCORE]
+        hits = [r for r in response.points if r.score >= STUDENT_HISTORY_MIN_SCORE]
         return [
             {
                 "question": h.payload.get("question"),
@@ -770,12 +770,13 @@ def find_semantic_cache_match(
         chapter_str = str(chapter or "").strip().lower()
         if chapter_str:
             must.append(models.FieldCondition(key="chapter", match=models.MatchValue(value=chapter_str)))
-        results = client.search(
+        response = client.query_points(
             collection_name=GLOBAL_CACHE_INDEX_COLLECTION,
-            query_vector=vector,
+            query=vector,
             query_filter=models.Filter(must=must),
             limit=1,
         )
+        results = response.points
         if results and results[0].score >= GLOBAL_CACHE_MIN_SCORE:
             return results[0].payload.get("doc_id")
         return None

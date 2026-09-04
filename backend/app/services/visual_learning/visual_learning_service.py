@@ -141,7 +141,8 @@ def _build_video_personalization_block(student_profile: dict = None) -> str:
 
 
 async def generate_visual_lesson_stream(query: str, book_uuid: str, class_name: str, subject: str,
-                                         precomputed_storyboard: dict = None, student_profile: dict = None):
+                                         precomputed_storyboard: dict = None, student_profile: dict = None,
+                                         precomputed_context: str = None):
     """
     Main pipeline to generate a visual lesson storyboard.
     Streams progress states synchronized with frontend UI steps, compiles Hyperframes composition,
@@ -270,26 +271,36 @@ async def generate_visual_lesson_stream(query: str, book_uuid: str, class_name: 
             # resolved_book_uuid new_rag ingestion now writes under (see step 1's
             # book_uuid override param), so no book_uuid mapping issue here.
             context = ""
-            try:
-                retrieval_result = new_rag_adapter.hybrid_search_v2(
-                    query=query,
-                    book_uuid=book_uuid,
-                    class_name=class_name,
-                    subject=subject,
-                )
-                score_payload_pairs = retrieval_result["score_payload_pairs"]
-                if score_payload_pairs:
-                    context = "\n\n---\n\n".join(
-                        payload.get("text", "") for _score, payload in score_payload_pairs[:5]
+            if precomputed_context:
+                # Reuse the question_pipeline's own Stage 4/5 RAG fetch (chat.py
+                # passes it through) instead of re-running hybrid_search_v2 - see
+                # chat_adapter.py's "retrieval_context" field for why: this used
+                # to run the entire retrieval (incl. the CLIP image-vector pass)
+                # a second time for the identical query/book_uuid, which is what
+                # doubled memory use on video requests and caused a real OOM.
+                context = precomputed_context
+                logger.info(f"[VisualLearning] Reusing precomputed retrieval context ({len(context)} chars) - skipping duplicate hybrid search.")
+            else:
+                try:
+                    retrieval_result = new_rag_adapter.hybrid_search_v2(
+                        query=query,
+                        book_uuid=book_uuid,
+                        class_name=class_name,
+                        subject=subject,
                     )
-                    logger.info(
-                        f"[VisualLearning] Retrieved {len(score_payload_pairs)} chunks for context "
-                        f"(confidence_tier={retrieval_result.get('confidence_tier')})."
-                    )
-                else:
-                    logger.warning("[VisualLearning] No chunks retrieved. Using query context only.")
-            except Exception as e:
-                logger.error(f"[VisualLearning] Hybrid search failed: {e}")
+                    score_payload_pairs = retrieval_result["score_payload_pairs"]
+                    if score_payload_pairs:
+                        context = "\n\n---\n\n".join(
+                            payload.get("text", "") for _score, payload in score_payload_pairs[:5]
+                        )
+                        logger.info(
+                            f"[VisualLearning] Retrieved {len(score_payload_pairs)} chunks for context "
+                            f"(confidence_tier={retrieval_result.get('confidence_tier')})."
+                        )
+                    else:
+                        logger.warning("[VisualLearning] No chunks retrieved. Using query context only.")
+                except Exception as e:
+                    logger.error(f"[VisualLearning] Hybrid search failed: {e}")
 
             yield f"data: {json.dumps({'type': 'progress', 'step': 'understanding_topic', 'status': 'complete', 'message': 'Textbook context analyzed.'})}\n\n"
 
