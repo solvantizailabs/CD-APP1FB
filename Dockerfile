@@ -3,6 +3,16 @@ FROM python:3.11-slim
 # Force unbuffered Python stdout/stderr for real-time log streaming on Render
 ENV PYTHONUNBUFFERED=1
 
+# python:3.11-slim has no locale configured by default, so Python falls back
+# to ASCII-only encoding for things like HTTP headers - confirmed by a real
+# deploy failure on DigitalOcean App Platform: "'ascii' codec can't encode
+# characters" when the Qdrant client tried to connect, even though the
+# actual API key was verified byte-for-byte correct. Local Docker Desktop
+# builds never hit this (it inherits a UTF-8-friendly locale some other
+# way), which is why this only showed up on a real deploy.
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+
 # Install system build dependencies. Node.js is no longer installed here -
 # Hyperframes (the only thing that needed it) now runs on its own service,
 # see hyperframes_service/Dockerfile.
