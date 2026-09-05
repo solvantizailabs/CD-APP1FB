@@ -2,11 +2,22 @@
 Image embedding generation for diagram visual retrieval (Stage 2 of the
 image pipeline - see docs/IMAGE_PIPELINE_PLAN.md section 3).
 
-STATUS (2026-09-02): inactive. `sentence-transformers`/`torch` (the CLIP
+STATUS (2026-09-05): inactive again, this time by explicit team decision on
+DigitalOcean App Platform. `sentence-transformers`/`torch` were restored
+briefly (2026-09-03) after the original 2026-09-02 Render OOM disable below,
+then confirmed - via a real memory graph, container climbing to ~95-100% and
+getting OOM-killed - to be the actual cause of live crashes on video-format
+requests: CLIP's resident model weights plus a ~1-2 minute Hugging Face
+cold-load on every fresh container. Removed from requirements.txt again
+(and the Dockerfile's CPU-torch install block dropped with it) - this file's
+functions and both call sites below are deliberately left untouched so a
+future re-enable is just restoring the one requirements.txt line.
+
+STATUS (2026-09-02, first disable): `sentence-transformers`/`torch` (the CLIP
 model this module used) were removed from requirements.txt to fix a
 Render 512Mi OOM at deploy time - see the deployment-fix discussion for
 the full options considered (a lighter ONNX CLIP via fastembed, a hosted
-multimodal embedder API, or a bigger Render plan; none chosen yet).
+multimodal embedder API, or a bigger Render plan; none chosen at the time).
 Both call sites (image_indexer ingestion and hybrid_retriever's
 cross-modal widening) wrap calls into this module in broad try/except
 and fail open, so this being non-functional does not break ingestion or

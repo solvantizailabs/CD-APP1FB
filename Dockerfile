@@ -33,15 +33,15 @@ WORKDIR /app
 # Copy requirement manifest and install Python dependencies
 COPY requirements.txt ./
 
-# sentence-transformers (below, for CLIP image search) pulls in PyTorch as a
-# dependency. pip's default torch wheel bundles several GB of NVIDIA
-# CUDA/cuDNN libraries for GPU acceleration - dead weight here, since this is
-# always a CPU-only container (python:3.11-slim, no GPU). Confirmed by hand:
-# this single package was 6.45GB of the image. Installing the CPU-only torch
-# build FIRST means the next line's sentence-transformers install finds
-# torch's version requirement already satisfied and skips reinstalling it -
-# same CLIP functionality, ~5GB smaller image.
-RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+# sentence-transformers/torch (CLIP image-embedding search) deliberately
+# removed from requirements.txt, 2026-09-05 - confirmed via a real DigitalOcean
+# App Platform OOM (memory graph showed the container climbing to ~95-100%
+# and getting killed) that CLIP's resident model weights plus its ~1-2min
+# Hugging Face cold-load on every fresh container were the actual cause. See
+# backend/app/services/new_rag/embeddings/image_embedding_service.py's own
+# docstring for the disable/re-enable details - the code and its callers'
+# fail-open handling are untouched, only this dependency is gone, so
+# retrieval behaves exactly as if image-embeddings were never integrated.
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Pre-download fastembed model weights during build so server boots instantly (0s startup delay)

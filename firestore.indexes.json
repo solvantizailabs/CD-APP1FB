@@ -9,6 +9,15 @@
         { "fieldPath": "board", "order": "ASCENDING" },
         { "fieldPath": "language", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "query_cache",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "board", "order": "ASCENDING" },
+        { "fieldPath": "class", "order": "ASCENDING" },
+        { "fieldPath": "normalized_query", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []
